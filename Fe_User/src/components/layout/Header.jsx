@@ -176,35 +176,49 @@ const Header = ({ user, handleLogout }) => {
                     {/* User Menu */}
                     <div className="flex items-center space-x-3">
                         {user ? (
-                            <div className="relative group">
-                                <button className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-full text-sm font-medium hover:from-green-600 hover:to-emerald-700 transition-all transform hover:scale-105 shadow-lg">
-                                    <span>{user.fullName || user.name || "User"}</span>
+                            <>
+                                {/* Nút "Vé của tôi" */}
+                                <Link
+                                    to="/my-tickets"
+                                    className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-full text-sm font-medium hover:from-blue-600 hover:to-indigo-700 transition-all transform hover:scale-105 shadow-lg"
+                                >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
                                     </svg>
-                                </button>
+                                    <span>Vé của tôi</span>
+                                </Link>
 
-                                <div className="absolute right-0 mt-2 w-48 bg-white/10 backdrop-blur-md rounded-xl shadow-lg border border-white/20 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                                    <Link
-                                        to="/profile"
-                                        className="block px-4 py-2.5 text-sm text-white hover:bg-white/20 first:rounded-t-xl transition-colors"
-                                    >
-                                        👤 Hồ sơ
-                                    </Link>
-                                    <button
-                                        onClick={() => window.location.href = '/reset-password'}
-                                        className="w-full text-left px-4 py-2.5 text-sm text-red-300 hover:bg-red-500/20 last:rounded-b-xl font-medium transition-colors"
-                                    >
-                                        🔐 Đổi mật khẩu
+                                {/* Menu User */}
+                                <div className="relative group">
+                                    <button className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-full text-sm font-medium hover:from-green-600 hover:to-emerald-700 transition-all transform hover:scale-105 shadow-lg">
+                                        <span>{user.fullName || user.name || "User"}</span>
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
                                     </button>
-                                    <button
-                                        onClick={handleLogout}
-                                        className="w-full text-left px-4 py-2.5 text-sm text-red-300 hover:bg-red-500/20 last:rounded-b-xl font-medium transition-colors"
-                                    >
-                                        🚪 Đăng xuất
-                                    </button>
+
+                                    <div className="absolute right-0 mt-2 w-48 bg-white/10 backdrop-blur-md rounded-xl shadow-lg border border-white/20 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                                        <Link
+                                            to="/profile"
+                                            className="block px-4 py-2.5 text-sm text-white hover:bg-white/20 first:rounded-t-xl transition-colors"
+                                        >
+                                            👤 Hồ sơ
+                                        </Link>
+                                        <button
+                                            onClick={() => window.location.href = '/reset-password'}
+                                            className="w-full text-left px-4 py-2.5 text-sm text-red-300 hover:bg-red-500/20 font-medium transition-colors"
+                                        >
+                                            🔐 Đổi mật khẩu
+                                        </button>
+                                        <button
+                                            onClick={handleLogout}
+                                            className="w-full text-left px-4 py-2.5 text-sm text-red-300 hover:bg-red-500/20 last:rounded-b-xl font-medium transition-colors"
+                                        >
+                                            🚪 Đăng xuất
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
+                            </>
                         ) : (
                             <div className="flex items-center space-x-2">
                                 <Link

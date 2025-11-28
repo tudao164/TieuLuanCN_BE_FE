@@ -406,7 +406,7 @@ const MyTickets = ({ user, setUser }) => {
 
                     {/* Statistics */}
                     {tickets.length > 0 && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
                             <div className="bg-green-500/20 backdrop-blur-md rounded-xl shadow-2xl p-6 border border-green-400/30">
                                 <div className="flex items-center gap-3">
                                     <CheckCircle className="w-10 h-10 text-green-400" />
@@ -426,22 +426,6 @@ const MyTickets = ({ user, setUser }) => {
                                         <div className="text-white/60 text-sm">Đã hủy</div>
                                         <div className="text-2xl font-bold text-white">
                                             {tickets.filter(t => t.status === 'CANCELLED').length}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="bg-purple-500/20 backdrop-blur-md rounded-xl shadow-2xl p-6 border border-purple-400/30">
-                                <div className="flex items-center gap-3">
-                                    <CreditCard className="w-10 h-10 text-purple-400" />
-                                    <div>
-                                        <div className="text-white/60 text-sm">Tổng chi tiêu</div>
-                                        <div className="text-lg font-bold text-white">
-                                            {formatCurrency(
-                                                tickets
-                                                    .filter(t => t.status === 'ACTIVE')
-                                                    .reduce((sum, t) => sum + (t.price || 0), 0)
-                                            )}
                                         </div>
                                     </div>
                                 </div>

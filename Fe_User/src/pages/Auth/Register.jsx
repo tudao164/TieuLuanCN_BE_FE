@@ -217,24 +217,6 @@ const Register = () => {
                             )}
                         </div>
 
-                        {/* Role Field */}
-                        <div>
-                            <label className="block text-sm font-medium text-white/80 mb-2">
-                                Vai trò
-                            </label>
-                            <select
-                                name="role"
-                                value={form.role}
-                                onChange={handleChange}
-                                className="w-full px-4 py-3 border border-white/20 rounded-2xl focus:outline-none focus:ring-4 focus:ring-purple-500/30 focus:border-purple-400 transition-all duration-200 bg-white/5 text-white"
-                                required
-                            >
-                                <option value="CUSTOMER">Khách hàng</option>
-                                <option value="STAFF">Nhân viên</option>
-                                <option value="ADMIN">Quản trị viên</option>
-                            </select>
-                        </div>
-
                         {/* Submit Button */}
                         <button
                             type="submit"
