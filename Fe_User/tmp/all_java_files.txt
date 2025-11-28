@@ -1,0 +1,4492 @@
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\AdminController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.entity.User;
+import com.example.rapphim.rapphim.entity.Ticket;
+import com.example.rapphim.rapphim.service.TicketService;
+import com.example.rapphim.rapphim.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+
+@RestController
+@RequestMapping("/api/admin")
+@CrossOrigin(origins = "*")
+public class AdminController {
+    
+    @Autowired
+    private TicketService ticketService;
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    @GetMapping("/tickets")
+    public ResponseEntity<List<Ticket>> getAllTickets() {
+        return ResponseEntity.ok(ticketService.getAllTickets());
+    }
+    
+    @GetMapping("/users")
+    public ResponseEntity<List<User>> getAllUsers() {
+        return ResponseEntity.ok(userRepository.findAll());
+    }
+    
+    @GetMapping("/statistics/daily")
+    public ResponseEntity<Map<String, Object>> getDailyStatistics() {
+        Map<String, Object> stats = new HashMap<>();
+        
+        Long ticketsSoldToday = ticketService.getTotalTicketsSoldToday();
+        Double todayRevenue = ticketService.getTotalRevenue(LocalDate.now(), LocalDate.now());
+        
+        stats.put("ticketsSoldToday", ticketsSoldToday);
+        stats.put("todayRevenue", todayRevenue != null ? todayRevenue : 0.0);
+        
+        return ResponseEntity.ok(stats);
+    }
+    
+    @GetMapping("/statistics/revenue")
+    public ResponseEntity<Map<String, Object>> getRevenueStatistics(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        
+        Map<String, Object> stats = new HashMap<>();
+        Double revenue = ticketService.getTotalRevenue(startDate, endDate);
+        
+        stats.put("startDate", startDate);
+        stats.put("endDate", endDate);
+        stats.put("totalRevenue", revenue != null ? revenue : 0.0);
+        
+        return ResponseEntity.ok(stats);
+    }
+    
+    @PutMapping("/users/{id}/role")
+    public ResponseEntity<User> updateUserRole(@PathVariable Long id, @RequestParam String role) {
+        try {
+            User user = userRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            user.setRole(User.Role.valueOf(role.toUpperCase()));
+            User updatedUser = userRepository.save(user);
+            
+            return ResponseEntity.ok(updatedUser);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\AuthController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.dto.AuthResponse;
+import com.example.rapphim.rapphim.dto.LoginRequest;
+import com.example.rapphim.rapphim.dto.RegisterRequest;
+import com.example.rapphim.rapphim.dto.VerifyOtpRequest;
+import com.example.rapphim.rapphim.service.AuthService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/auth")
+@CrossOrigin(origins = "*")
+public class AuthController {
+    
+    @Autowired
+    private AuthService authService;
+    
+    // Lưu tạm thông tin đăng ký (trong production nên dùng Redis hoặc cache)
+    private Map<String, RegisterRequest> pendingRegistrations = new HashMap<>();
+    
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest loginRequest) {
+        try {
+            AuthResponse response = authService.login(loginRequest);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@RequestBody RegisterRequest registerRequest) {
+        try {
+            String message = authService.register(registerRequest);
+            
+            // Lưu thông tin đăng ký tạm thời
+            pendingRegistrations.put(registerRequest.getEmail(), registerRequest);
+            
+            Map<String, String> response = new HashMap<>();
+            response.put("message", message);
+            response.put("email", registerRequest.getEmail());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    
+    @PostMapping("/verify-otp")
+    public ResponseEntity<?> verifyOtp(@RequestBody VerifyOtpRequest verifyRequest) {
+        try {
+            // Lấy thông tin đăng ký từ map
+            RegisterRequest registerRequest = pendingRegistrations.get(verifyRequest.getEmail());
+            
+            if (registerRequest == null) {
+                Map<String, String> errorResponse = new HashMap<>();
+                errorResponse.put("error", "Registration information not found. Please register again.");
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+            
+            // Verify OTP và hoàn tất đăng ký
+            AuthResponse response = authService.verifyOtpAndCompleteRegistration(
+                    verifyRequest.getEmail(), 
+                    verifyRequest.getOtpCode(), 
+                    registerRequest
+            );
+            
+            // Xóa thông tin tạm sau khi hoàn tất
+            pendingRegistrations.remove(verifyRequest.getEmail());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\ComboController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.entity.Combo;
+import com.example.rapphim.rapphim.service.ComboService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/combos")
+@CrossOrigin(origins = "*")
+public class ComboController {
+    
+    @Autowired
+    private ComboService comboService;
+    
+    @GetMapping
+    public ResponseEntity<List<Combo>> getAllCombos() {
+        return ResponseEntity.ok(comboService.getAllCombos());
+    }
+    
+    @GetMapping("/{id}")
+    public ResponseEntity<Combo> getComboById(@PathVariable Long id) {
+        return comboService.getComboById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    @GetMapping("/search")
+    public ResponseEntity<List<Combo>> searchCombos(@RequestParam String name) {
+        return ResponseEntity.ok(comboService.searchCombosByName(name));
+    }
+    
+    @PostMapping
+    public ResponseEntity<Combo> createCombo(@RequestBody Combo combo) {
+        Combo createdCombo = comboService.createCombo(combo);
+        return ResponseEntity.ok(createdCombo);
+    }
+    
+    @PutMapping("/{id}")
+    public ResponseEntity<Combo> updateCombo(@PathVariable Long id, @RequestBody Combo combo) {
+        try {
+            Combo updatedCombo = comboService.updateCombo(id, combo);
+            return ResponseEntity.ok(updatedCombo);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+    
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteCombo(@PathVariable Long id) {
+        comboService.deleteCombo(id);
+        return ResponseEntity.ok().build();
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\MovieController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.dto.MovieRequest;
+import com.example.rapphim.rapphim.entity.Movie;
+import com.example.rapphim.rapphim.service.MovieService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/movies")
+@CrossOrigin(origins = "*")
+public class MovieController {
+    
+    @Autowired
+    private MovieService movieService;
+    
+    @GetMapping
+    public ResponseEntity<List<Movie>> getAllMovies() {
+        return ResponseEntity.ok(movieService.getAllMovies());
+    }
+    
+    @GetMapping("/{id}")
+    public ResponseEntity<Movie> getMovieById(@PathVariable Long id) {
+        return movieService.getMovieById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    @GetMapping("/search")
+    public ResponseEntity<List<Movie>> searchMovies(@RequestParam String title) {
+        return ResponseEntity.ok(movieService.searchMoviesByTitle(title));
+    }
+    
+    @GetMapping("/genre/{genre}")
+    public ResponseEntity<List<Movie>> getMoviesByGenre(@PathVariable String genre) {
+        return ResponseEntity.ok(movieService.getMoviesByGenre(genre));
+    }
+    
+    @GetMapping("/popular")
+    public ResponseEntity<List<Movie>> getMostPopularMovies() {
+        return ResponseEntity.ok(movieService.getMostPopularMovies());
+    }
+    
+    @PostMapping
+    public ResponseEntity<Movie> createMovie(@RequestBody MovieRequest movieRequest) {
+        Movie movie = movieService.createMovie(movieRequest);
+        return ResponseEntity.ok(movie);
+    }
+    
+    @PutMapping("/{id}")
+    public ResponseEntity<Movie> updateMovie(@PathVariable Long id, @RequestBody MovieRequest movieRequest) {
+        try {
+            Movie movie = movieService.updateMovie(id, movieRequest);
+            return ResponseEntity.ok(movie);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+    
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteMovie(@PathVariable Long id) {
+        movieService.deleteMovie(id);
+        return ResponseEntity.ok().build();
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\PaymentController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.dto.CreatePaymentRequest;
+import com.example.rapphim.rapphim.dto.MomoCallbackRequest;
+import com.example.rapphim.rapphim.entity.Payment;
+import com.example.rapphim.rapphim.service.MoMoService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/payments")
+@CrossOrigin(origins = "*")
+@RequiredArgsConstructor
+public class PaymentController {
+    
+    private final MoMoService moMoService;
+    
+    /**
+     * Tạo payment và nhận URL thanh toán MoMo
+     */
+    @PostMapping("/create")
+    public ResponseEntity<?> createPayment(@RequestBody CreatePaymentRequest request) {
+        try {
+            Payment payment = moMoService.createPayment(request);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("paymentId", payment.getPaymentID());
+            response.put("orderId", payment.getOrderId());
+            response.put("amount", payment.getAmount());
+            response.put("paymentUrl", payment.getPaymentUrl());
+            response.put("message", "Payment created successfully. Redirect to paymentUrl to complete payment.");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    
+    /**
+     * Callback từ MoMo (IPN - Instant Payment Notification)
+     * Endpoint này sẽ được MoMo gọi tự động sau khi user thanh toán
+     */
+    @PostMapping("/momo-callback")
+    public ResponseEntity<?> momoCallback(@RequestBody MomoCallbackRequest callback) {
+        try {
+            moMoService.handleCallback(callback);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "success");
+            response.put("message", "Callback processed successfully");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("status", "error");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    
+    /**
+     * Kiểm tra trạng thái thanh toán bằng orderId
+     */
+    @GetMapping("/status/{orderId}")
+    public ResponseEntity<?> getPaymentStatus(@PathVariable String orderId) {
+        try {
+            Payment payment = moMoService.getPaymentByOrderId(orderId);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("paymentId", payment.getPaymentID());
+            response.put("orderId", payment.getOrderId());
+            response.put("amount", payment.getAmount());
+            response.put("status", payment.getStatus());
+            response.put("resultCode", payment.getResultCode());
+            response.put("message", payment.getMessage());
+            response.put("momoTransId", payment.getMomoTransId());
+            response.put("createdAt", payment.getCreatedAt());
+            response.put("updatedAt", payment.getUpdatedAt());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    
+    /**
+     * Lấy danh sách payment của user hiện tại
+     */
+    @GetMapping("/my-payments")
+    public ResponseEntity<List<Payment>> getMyPayments() {
+        try {
+            List<Payment> payments = moMoService.getMyPayments();
+            return ResponseEntity.ok(payments);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    /**
+     * Lấy chi tiết payment theo ID
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getPaymentById(@PathVariable Long id) {
+        try {
+            // Có thể thêm service method để get by ID
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Use /status/{orderId} instead");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\PromotionController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.entity.Promotion;
+import com.example.rapphim.rapphim.service.PromotionService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+
+@RestController
+@RequestMapping("/api/promotions")
+@CrossOrigin(origins = "*")
+public class PromotionController {
+    
+    @Autowired
+    private PromotionService promotionService;
+    
+    @GetMapping
+    public ResponseEntity<List<Promotion>> getAllPromotions() {
+        return ResponseEntity.ok(promotionService.getAllPromotions());
+    }
+    
+    @GetMapping("/active")
+    public ResponseEntity<List<Promotion>> getActivePromotions() {
+        return ResponseEntity.ok(promotionService.getActivePromotions());
+    }
+    
+    @GetMapping("/{id}")
+    public ResponseEntity<Promotion> getPromotionById(@PathVariable Long id) {
+        return promotionService.getPromotionById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    @GetMapping("/code/{code}")
+    public ResponseEntity<Promotion> getPromotionByCode(@PathVariable String code) {
+        return promotionService.getPromotionByCode(code)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    @PostMapping("/validate")
+    public ResponseEntity<Map<String, Object>> validatePromotion(@RequestParam String code) {
+        Map<String, Object> response = new HashMap<>();
+        boolean isValid = promotionService.isPromotionValid(code);
+        
+        response.put("valid", isValid);
+        if (isValid) {
+            promotionService.getPromotionByCode(code).ifPresent(promotion -> {
+                response.put("discount", promotion.getDiscount());
+                response.put("code", promotion.getCode());
+            });
+        }
+        
+        return ResponseEntity.ok(response);
+    }
+    
+    @PostMapping
+    public ResponseEntity<Promotion> createPromotion(@RequestBody Promotion promotion) {
+        Promotion createdPromotion = promotionService.createPromotion(promotion);
+        return ResponseEntity.ok(createdPromotion);
+    }
+    
+    @PutMapping("/{id}")
+    public ResponseEntity<Promotion> updatePromotion(@PathVariable Long id, @RequestBody Promotion promotion) {
+        try {
+            Promotion updatedPromotion = promotionService.updatePromotion(id, promotion);
+            return ResponseEntity.ok(updatedPromotion);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+    
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deletePromotion(@PathVariable Long id) {
+        promotionService.deletePromotion(id);
+        return ResponseEntity.ok().build();
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\ReviewController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.dto.ReviewRequest;
+import com.example.rapphim.rapphim.entity.Review;
+import com.example.rapphim.rapphim.service.ReviewService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+
+@RestController
+@RequestMapping("/api/reviews")
+@CrossOrigin(origins = "*")
+public class ReviewController {
+    
+    @Autowired
+    private ReviewService reviewService;
+    
+    @GetMapping("/movie/{movieId}")
+    public ResponseEntity<List<Review>> getReviewsByMovie(@PathVariable Long movieId) {
+        try {
+            List<Review> reviews = reviewService.getReviewsByMovie(movieId);
+            return ResponseEntity.ok(reviews);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+    
+    @GetMapping("/movie/{movieId}/average")
+    public ResponseEntity<Map<String, Object>> getAverageRating(@PathVariable Long movieId) {
+        try {
+            Double average = reviewService.getAverageRatingByMovie(movieId);
+            Map<String, Object> response = new HashMap<>();
+            response.put("averageRating", average != null ? average : 0.0);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+    
+    @GetMapping("/my-reviews")
+    public ResponseEntity<List<Review>> getMyReviews() {
+        return ResponseEntity.ok(reviewService.getMyReviews());
+    }
+    
+    @PostMapping
+    public ResponseEntity<?> createReview(@RequestBody ReviewRequest reviewRequest) {
+        try {
+            Review review = reviewService.createReview(reviewRequest);
+            return ResponseEntity.ok(review);
+        } catch (RuntimeException e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+    
+    @PostMapping("/movie/{movieId}")
+    public ResponseEntity<Review> createReview(
+            @PathVariable Long movieId,
+            @RequestParam Integer star,
+            @RequestParam(required = false) String comment) {
+        try {
+            Review review = reviewService.createReview(movieId, star, comment);
+            return ResponseEntity.ok(review);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    @PutMapping("/{id}")
+    public ResponseEntity<Review> updateReview(
+            @PathVariable Long id,
+            @RequestParam Integer star,
+            @RequestParam(required = false) String comment) {
+        try {
+            Review review = reviewService.updateReview(id, star, comment);
+            return ResponseEntity.ok(review);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteReview(@PathVariable Long id) {
+        try {
+            reviewService.deleteReview(id);
+            return ResponseEntity.ok().build();
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\RoomController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.dto.RoomLayoutDTO;
+import com.example.rapphim.rapphim.entity.Room;
+import com.example.rapphim.rapphim.entity.Seat;
+import com.example.rapphim.rapphim.service.RoomService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/rooms")
+@RequiredArgsConstructor
+@CrossOrigin(origins = "*")
+public class RoomController {
+
+    private final RoomService roomService;
+
+    // Lấy tất cả phòng
+    @GetMapping
+    public ResponseEntity<List<Room>> getAllRooms() {
+        return ResponseEntity.ok(roomService.getAllRooms());
+    }
+
+    // Lấy phòng theo ID
+    @GetMapping("/{id}")
+    public ResponseEntity<Room> getRoomById(@PathVariable Long id) {
+        return ResponseEntity.ok(roomService.getRoomById(id));
+    }
+
+    // Lấy phòng theo ID với layout
+    @GetMapping("/{id}/with-layout")
+    public ResponseEntity<Room> getRoomWithLayout(@PathVariable Long id) {
+        return ResponseEntity.ok(roomService.getRoomWithLayout(id));
+    }
+
+    // Tạo phòng mới
+    @PostMapping
+    public ResponseEntity<Room> createRoom(@RequestBody Room room) {
+        return ResponseEntity.ok(roomService.createRoom(room));
+    }
+
+    // Cập nhật phòng
+    @PutMapping("/{id}")
+    public ResponseEntity<Room> updateRoom(@PathVariable Long id, @RequestBody Room room) {
+        return ResponseEntity.ok(roomService.updateRoom(id, room));
+    }
+
+    // Xóa phòng (và tất cả ghế)
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteRoom(@PathVariable Long id) {
+        roomService.deleteRoom(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ===== API QUAN TRỌNG: LẤY TẤT CẢ GHẾ TRONG PHÒNG =====
+    @GetMapping("/{roomId}/seats")
+    public ResponseEntity<List<Seat>> getSeatsByRoom(@PathVariable Long roomId) {
+        return ResponseEntity.ok(roomService.getSeatsByRoom(roomId));
+    }
+
+    // ===== API QUAN TRỌNG: LƯU TOÀN BỘ LAYOUT =====
+    @PostMapping("/{roomId}/layout")
+    public ResponseEntity<Room> saveRoomLayout(
+            @PathVariable Long roomId,
+            @RequestBody RoomLayoutDTO layoutDTO) {
+        return ResponseEntity.ok(roomService.saveRoomLayout(roomId, layoutDTO));
+    }
+
+    // ===== API QUAN TRỌNG: LẤY LAYOUT =====
+    @GetMapping("/{roomId}/layout")
+    public ResponseEntity<RoomLayoutDTO> getRoomLayout(@PathVariable Long roomId) {
+        return ResponseEntity.ok(roomService.getRoomLayout(roomId));
+    }
+
+    // ===== API BỔ SUNG: XÓA TẤT CẢ GHẾ TRONG PHÒNG =====
+    @DeleteMapping("/{roomId}/seats")
+    public ResponseEntity<Void> deleteAllSeatsInRoom(@PathVariable Long roomId) {
+        roomService.deleteAllSeatsInRoom(roomId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ===== API BỔ SUNG: TẠO GHẾ HÀNG LOẠT =====
+    @PostMapping("/{roomId}/seats/bulk")
+    public ResponseEntity<List<Seat>> createBulkSeats(
+            @PathVariable Long roomId,
+            @RequestBody List<Seat> seats) {
+        return ResponseEntity.ok(roomService.createBulkSeats(roomId, seats));
+    }
+
+    // Thêm vào RoomController
+    @GetMapping("/{roomId}/stats")
+    public ResponseEntity<Map<String, Object>> getRoomStats(@PathVariable Long roomId) {
+        Room room = roomService.getRoomById(roomId);
+        List<Seat> seats = roomService.getSeatsByRoom(roomId);
+
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("totalSeats", room.getTotalSeats());
+        stats.put("availableSeats", seats.stream().filter(s -> s.getStatus() == Seat.Status.AVAILABLE).count());
+        stats.put("standardSeats", seats.stream().filter(s -> "STANDARD".equals(s.getSeatType())).count());
+        stats.put("vipSeats", seats.stream().filter(s -> "VIP".equals(s.getSeatType())).count());
+        stats.put("coupleSeats", seats.stream().filter(s -> "COUPLE".equals(s.getSeatType())).count());
+        stats.put("premiumSeats", seats.stream().filter(s -> "PREMIUM".equals(s.getSeatType())).count());
+
+        return ResponseEntity.ok(stats);
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\SeatController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.entity.Seat;
+import com.example.rapphim.rapphim.service.SeatService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/seats")
+@RequiredArgsConstructor
+@CrossOrigin(origins = "*")
+public class SeatController {
+
+    private final SeatService seatService;
+
+    // Lấy tất cả ghế
+    @GetMapping
+    public ResponseEntity<List<Seat>> getAllSeats() {
+        return ResponseEntity.ok(seatService.getAllSeats());
+    }
+
+    // Lấy ghế theo ID
+    @GetMapping("/{id}")
+    public ResponseEntity<Seat> getSeatById(@PathVariable Long id) {
+        return ResponseEntity.ok(seatService.getSeatById(id));
+    }
+
+    // Tạo ghế mới
+    @PostMapping
+    public ResponseEntity<Seat> createSeat(@RequestBody Seat seat) {
+        return ResponseEntity.ok(seatService.createSeat(seat));
+    }
+
+    // Cập nhật ghế
+    @PutMapping("/{id}")
+    public ResponseEntity<Seat> updateSeat(@PathVariable Long id, @RequestBody Seat seat) {
+        return ResponseEntity.ok(seatService.updateSeat(id, seat));
+    }
+
+    // Xóa ghế
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteSeat(@PathVariable Long id) {
+        seatService.deleteSeat(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // Cập nhật trạng thái ghế
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<Seat> updateSeatStatus(
+            @PathVariable Long id,
+            @RequestParam Seat.Status status) {
+        return ResponseEntity.ok(seatService.updateSeatStatus(id, status));
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\ShowtimeController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.dto.ShowtimeRequest;
+import com.example.rapphim.rapphim.entity.Showtime;
+import com.example.rapphim.rapphim.service.ShowtimeService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/showtimes")
+@CrossOrigin(origins = "*")
+public class ShowtimeController {
+    
+    @Autowired
+    private ShowtimeService showtimeService;
+    
+    @GetMapping
+    public ResponseEntity<List<Showtime>> getAllShowtimes() {
+        return ResponseEntity.ok(showtimeService.getAllShowtimes());
+    }
+    
+    @GetMapping("/{id}")
+    public ResponseEntity<Showtime> getShowtimeById(@PathVariable Long id) {
+        return showtimeService.getShowtimeById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    @GetMapping("/movie/{movieId}")
+    public ResponseEntity<List<Showtime>> getShowtimesByMovie(@PathVariable Long movieId) {
+        return ResponseEntity.ok(showtimeService.getShowtimesByMovie(movieId));
+    }
+    
+    @GetMapping("/date/{date}")
+    public ResponseEntity<List<Showtime>> getShowtimesByDate(
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(showtimeService.getShowtimesByDate(date));
+    }
+    
+    @PostMapping
+    public ResponseEntity<Showtime> createShowtime(@RequestBody ShowtimeRequest showtimeRequest) {
+        try {
+            Showtime showtime = showtimeService.createShowtime(showtimeRequest);
+            return ResponseEntity.ok(showtime);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    @PutMapping("/{id}")
+    public ResponseEntity<Showtime> updateShowtime(@PathVariable Long id, @RequestBody ShowtimeRequest showtimeRequest) {
+        try {
+            Showtime showtime = showtimeService.updateShowtime(id, showtimeRequest);
+            return ResponseEntity.ok(showtime);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+    
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteShowtime(@PathVariable Long id) {
+        showtimeService.deleteShowtime(id);
+        return ResponseEntity.ok().build();
+    }
+    
+    @GetMapping("/now-showing")
+    public ResponseEntity<List<Showtime>> getNowShowingShowtimes() {
+        return ResponseEntity.ok(showtimeService.getNowShowingShowtimes());
+    }
+    
+    @GetMapping("/upcoming")
+    public ResponseEntity<List<Showtime>> getUpcomingShowtimes() {
+        return ResponseEntity.ok(showtimeService.getUpcomingShowtimes());
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\TicketController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.dto.TicketRequest;
+import com.example.rapphim.rapphim.entity.Ticket;
+import com.example.rapphim.rapphim.service.TicketService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/tickets")
+@CrossOrigin(origins = "*")
+public class TicketController {
+    
+    @Autowired
+    private TicketService ticketService;
+    
+    @GetMapping("/my-tickets")
+    public ResponseEntity<List<Ticket>> getMyTickets() {
+        return ResponseEntity.ok(ticketService.getMyTickets());
+    }
+    
+    @GetMapping("/{id}")
+    public ResponseEntity<Ticket> getTicketById(@PathVariable Long id) {
+        return ticketService.getTicketById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    @PostMapping("/book")
+    public ResponseEntity<?> bookTicket(@RequestBody TicketRequest ticketRequest) {
+        try {
+            List<Ticket> tickets = ticketService.bookTicket(ticketRequest);
+            
+            // Tính tổng tiền
+            double totalAmount = tickets.stream()
+                    .mapToDouble(Ticket::getPrice)
+                    .sum();
+            
+            // Tính tổng tiền combo (chỉ tính 1 lần cho cả order)
+            double totalComboAmount = 0.0;
+            if (!tickets.isEmpty() && tickets.get(0).getCombos() != null) {
+                totalComboAmount = tickets.get(0).getCombos().stream()
+                        .mapToDouble(combo -> combo.getPrice())
+                        .sum();
+            }
+            
+            // Lấy thông tin promotion nếu có
+            String promotionApplied = ticketRequest.getPromotionCode();
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Tickets booked successfully");
+            response.put("tickets", tickets);
+            response.put("totalTickets", tickets.size());
+            response.put("totalAmount", totalAmount);
+            response.put("totalComboAmount", totalComboAmount);
+            
+            if (promotionApplied != null && !promotionApplied.trim().isEmpty()) {
+                response.put("promotionApplied", promotionApplied);
+            }
+            
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    
+    @PutMapping("/{id}/cancel")
+    public ResponseEntity<Void> cancelTicket(@PathVariable Long id) {
+        try {
+            ticketService.cancelTicket(id);
+            return ResponseEntity.ok().build();
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\UploadController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.dto.UploadResponse;
+import com.example.rapphim.rapphim.service.CloudinaryService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.time.Instant;
+
+@RestController
+@RequestMapping("/api/upload")
+@CrossOrigin(origins = "*")
+public class UploadController {
+    
+    @Autowired
+    private CloudinaryService cloudinaryService;
+    
+    /**
+     * Upload single image
+     * Endpoint: POST /api/upload/image
+     */
+    @PostMapping("/image")
+    public ResponseEntity<UploadResponse> uploadImage(@RequestParam("file") MultipartFile file) {
+        try {
+            // Validate file type
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("image/")) {
+                return ResponseEntity.badRequest().body(
+                    createErrorResponse("Only image files are allowed")
+                );
+            }
+            
+            // Upload to Cloudinary
+            String imageUrl = cloudinaryService.uploadImage(file);
+            
+            // Create response
+            UploadResponse.UploadData data = new UploadResponse.UploadData();
+            data.setImageUrl(imageUrl);
+            data.setFilename(file.getOriginalFilename());
+            data.setSize(file.getSize());
+            data.setMimetype(file.getContentType());
+            
+            UploadResponse response = new UploadResponse();
+            response.setSuccess(true);
+            response.setMessage("Upload ảnh thành công");
+            response.setData(data);
+            response.setTimestamp(Instant.now().toString());
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(
+                createErrorResponse("Upload ảnh thất bại: " + e.getMessage())
+            );
+        }
+    }
+    
+    /**
+     * Upload single video (trailer)
+     * Endpoint: POST /api/upload/video
+     */
+    @PostMapping("/video")
+    public ResponseEntity<UploadResponse> uploadVideo(@RequestParam("file") MultipartFile file) {
+        try {
+            // Validate file type
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("video/")) {
+                return ResponseEntity.badRequest().body(
+                    createErrorResponse("Only video files are allowed")
+                );
+            }
+            
+            // Upload to Cloudinary
+            String videoUrl = cloudinaryService.uploadVideo(file);
+            
+            // Create response
+            UploadResponse.UploadData data = new UploadResponse.UploadData();
+            data.setVideoUrl(videoUrl);
+            data.setFilename(file.getOriginalFilename());
+            data.setSize(file.getSize());
+            data.setMimetype(file.getContentType());
+            
+            UploadResponse response = new UploadResponse();
+            response.setSuccess(true);
+            response.setMessage("Upload video thành công");
+            response.setData(data);
+            response.setTimestamp(Instant.now().toString());
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(
+                createErrorResponse("Upload video thất bại: " + e.getMessage())
+            );
+        }
+    }
+    
+    private UploadResponse createErrorResponse(String message) {
+        UploadResponse response = new UploadResponse();
+        response.setSuccess(false);
+        response.setMessage(message);
+        response.setTimestamp(Instant.now().toString());
+        return response;
+    }
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\controller\UserController.java ===
+
+package com.example.rapphim.rapphim.controller;
+
+import com.example.rapphim.rapphim.dto.ChangePasswordRequest;
+import com.example.rapphim.rapphim.dto.UpdateUserRequest;
+import com.example.rapphim.rapphim.entity.User;
+import com.example.rapphim.rapphim.service.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/users")
+@CrossOrigin(origins = "*")
+public class UserController {
+    
+    @Autowired
+    private UserService userService;
+    
+    /**
+     * Lấy danh sách tất cả users (Admin only)
+     */
+    @GetMapping
+    public ResponseEntity<List<User>> getAllUsers() {
+        return ResponseEntity.ok(userService.getAllUsers());
+    }
+    
+    /**
+     * Lấy thông tin user theo ID
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<User> getUserById(@PathVariable Long id) {
+        return userService.getUserById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    /**
+     * Lấy thông tin user hiện tại (đang đăng nhập)
+     */
+    @GetMapping("/me")
+    public ResponseEntity<User> getCurrentUser() {
+        try {
+            User user = userService.getCurrentUser();
+            return ResponseEntity.ok(user);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    /**
+     * Cập nhật thông tin user theo ID (Admin hoặc chính user đó)
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateUser(@PathVariable Long id, @RequestBody UpdateUserRequest request) {
+        try {
+            User user = userService.updateUser(id, request);
+            return ResponseEntity.ok(user);
+        } catch (RuntimeException e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    
+    /**
+     * Cập nhật thông tin user hiện tại
+     */
+    @PutMapping("/me")
+    public ResponseEntity<?> updateCurrentUser(@RequestBody UpdateUserRequest request) {
+        try {
+            User user = userService.updateCurrentUser(request);
+            return ResponseEntity.ok(user);
+        } catch (RuntimeException e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    
+    /**
+     * Đổi mật khẩu
+     */
+    @PutMapping("/change-password")
+    public ResponseEntity<?> changePassword(@RequestBody ChangePasswordRequest request) {
+        try {
+            userService.changePassword(request);
+            
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "Password changed successfully");
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    
+    /**
+     * Xóa user (Admin only)
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteUser(@PathVariable Long id) {
+        try {
+            userService.deleteUser(id);
+            
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "User deleted successfully");
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    
+    /**
+     * Cập nhật role của user (Admin only)
+     */
+    @PutMapping("/{id}/role")
+    public ResponseEntity<?> updateUserRole(@PathVariable Long id, @RequestParam String role) {
+        try {
+            User user = userService.updateUserRole(id, role);
+            return ResponseEntity.ok(user);
+        } catch (RuntimeException e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\repository\ComboRepository.java ===
+
+package com.example.rapphim.rapphim.repository;
+
+import com.example.rapphim.rapphim.entity.Combo;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface ComboRepository extends JpaRepository<Combo, Long> {
+    List<Combo> findByNameComboContainingIgnoreCase(String name);
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\repository\MovieRepository.java ===
+
+package com.example.rapphim.rapphim.repository;
+
+import com.example.rapphim.rapphim.entity.Movie;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@Repository
+public interface MovieRepository extends JpaRepository<Movie, Long> {
+    List<Movie> findByTitleContainingIgnoreCase(String title);
+    List<Movie> findByGenreContainingIgnoreCase(String genre);
+    List<Movie> findByReleaseDateBetween(LocalDate startDate, LocalDate endDate);
+    
+    @Query("SELECT m FROM Movie m ORDER BY m.totalTicketLove DESC")
+    List<Movie> findMostPopularMovies();
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\repository\OTPRepository.java ===
+
+package com.example.rapphim.rapphim.repository;
+
+import com.example.rapphim.rapphim.entity.OTP;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDateTime;
+import java.util.Optional;
+
+@Repository
+public interface OTPRepository extends JpaRepository<OTP, Long> {
+    Optional<OTP> findByEmailAndOtpCodeAndVerifiedFalse(String email, String otpCode);
+    Optional<OTP> findTopByEmailOrderByCreatedAtDesc(String email);
+    void deleteByExpiresAtBefore(LocalDateTime dateTime);
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\repository\PaymentRepository.java ===
+
+package com.example.rapphim.rapphim.repository;
+
+import com.example.rapphim.rapphim.entity.Payment;
+import com.example.rapphim.rapphim.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface PaymentRepository extends JpaRepository<Payment, Long> {
+    List<Payment> findByCustomer(User customer);
+    List<Payment> findByStatus(Payment.Status status);
+    Optional<Payment> findByOrderId(String orderId);
+    List<Payment> findByCustomerOrderByCreatedAtDesc(User customer);
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\repository\PromotionRepository.java ===
+
+package com.example.rapphim.rapphim.repository;
+
+import com.example.rapphim.rapphim.entity.Promotion;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface PromotionRepository extends JpaRepository<Promotion, Long> {
+    Optional<Promotion> findByCode(String code);
+    
+    @Query("SELECT p FROM Promotion p WHERE p.startDate <= :currentDate AND p.endDate >= :currentDate")
+    List<Promotion> findActivePromotions(@Param("currentDate") LocalDate currentDate);
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\repository\ReviewRepository.java ===
+
+package com.example.rapphim.rapphim.repository;
+
+import com.example.rapphim.rapphim.entity.Review;
+import com.example.rapphim.rapphim.entity.Movie;
+import com.example.rapphim.rapphim.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface ReviewRepository extends JpaRepository<Review, Long> {
+    List<Review> findByMovie(Movie movie);
+    List<Review> findByCustomer(User customer);
+    Optional<Review> findByCustomerAndMovie(User customer, Movie movie);
+    
+    @Query("SELECT AVG(r.star) FROM Review r WHERE r.movie = :movie")
+    Double getAverageRatingByMovie(@Param("movie") Movie movie);
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\repository\RoomRepository.java ===
+
+package com.example.rapphim.rapphim.repository;
+
+import com.example.rapphim.rapphim.entity.Room;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface RoomRepository extends JpaRepository<Room, Long> {
+    List<Room> findByRoomType(String roomType);
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\repository\SeatRepository.java ===
+
+package com.example.rapphim.rapphim.repository;
+
+import com.example.rapphim.rapphim.entity.Room;
+import com.example.rapphim.rapphim.entity.Seat;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface SeatRepository extends JpaRepository<Seat, Long> {
+    List<Seat> findByRoom(Room room);
+
+    List<Seat> findByRoomOrderByRowLabelAscColumnNumberAsc(Room room);
+
+    @Modifying
+    @Query("DELETE FROM Seat s WHERE s.room = :room")
+    void deleteByRoom(@Param("room") Room room);
+
+    @Query("SELECT COUNT(s) FROM Seat s WHERE s.room = :room")
+    Integer countByRoom(@Param("room") Room room);
+
+    Optional<Seat> findByRoomAndSeatNumber(Room room, String seatNumber);
+
+    List<Seat> findByRoomAndStatus(Room room, Seat.Status status);
+
+    // Tìm ghế theo loại
+    List<Seat> findByRoomAndSeatType(Room room, String seatType);
+
+    // Tìm ghế couple
+    List<Seat> findByRoomAndSeatTypeOrderByRowLabelAscColumnNumberAsc(Room room, String seatType);
+
+    // Đếm số ghế theo loại
+    @Query("SELECT COUNT(s) FROM Seat s WHERE s.room = :room AND s.seatType = :seatType")
+    Integer countByRoomAndSeatType(@Param("room") Room room, @Param("seatType") String seatType);
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\repository\ShowtimeRepository.java ===
+
+package com.example.rapphim.rapphim.repository;
+
+import com.example.rapphim.rapphim.entity.Showtime;
+import com.example.rapphim.rapphim.entity.Movie;
+import com.example.rapphim.rapphim.entity.Room;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@Repository
+public interface ShowtimeRepository extends JpaRepository<Showtime, Long> {
+    List<Showtime> findByMovie(Movie movie);
+    List<Showtime> findByRoom(Room room);
+    List<Showtime> findByShowtimeDate(LocalDate date);
+    List<Showtime> findByMovieAndShowtimeDate(Movie movie, LocalDate date);
+    List<Showtime> findByRoomAndShowtimeDate(Room room, LocalDate date);
+    
+    // Lấy showtimes đang chiếu (từ hôm nay trở về trước)
+    @Query("SELECT s FROM Showtime s WHERE s.showtimeDate <= :currentDate ORDER BY s.showtimeDate DESC, s.startTime DESC")
+    List<Showtime> findNowShowingShowtimes(@Param("currentDate") LocalDate currentDate);
+    
+    // Lấy showtimes sắp chiếu (từ ngày mai trở đi)
+    @Query("SELECT s FROM Showtime s WHERE s.showtimeDate > :currentDate ORDER BY s.showtimeDate ASC, s.startTime ASC")
+    List<Showtime> findUpcomingShowtimes(@Param("currentDate") LocalDate currentDate);
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\repository\TicketRepository.java ===
+
+package com.example.rapphim.rapphim.repository;
+
+import com.example.rapphim.rapphim.entity.Ticket;
+import com.example.rapphim.rapphim.entity.User;
+import com.example.rapphim.rapphim.entity.Showtime;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@Repository
+public interface TicketRepository extends JpaRepository<Ticket, Long> {
+    List<Ticket> findByCustomer(User customer);
+    List<Ticket> findByShowtime(Showtime showtime);
+    List<Ticket> findByStatus(Ticket.Status status);
+    List<Ticket> findByBookingDateBetween(LocalDate startDate, LocalDate endDate);
+    
+    @Query("SELECT COUNT(t) FROM Ticket t WHERE t.bookingDate = :date")
+    Long countTicketsByDate(@Param("date") LocalDate date);
+    
+    @Query("SELECT SUM(t.price) FROM Ticket t WHERE t.bookingDate BETWEEN :startDate AND :endDate")
+    Double getTotalRevenueByDateRange(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+    
+    @Query("SELECT CASE WHEN COUNT(t) > 0 THEN true ELSE false END FROM Ticket t " +
+           "WHERE t.customer = :customer " +
+           "AND t.showtime.movie.movieID = :movieId " +
+           "AND t.status != 'CANCELLED' " +
+           "AND (t.showtime.showtimeDate < :currentDate " +
+           "OR (t.showtime.showtimeDate = :currentDate AND t.showtime.endTime < :currentTime))")
+    boolean hasUserWatchedMovie(@Param("customer") User customer, 
+                                 @Param("movieId") Long movieId,
+                                 @Param("currentDate") LocalDate currentDate,
+                                 @Param("currentTime") java.time.LocalTime currentTime);
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\repository\UserRepository.java ===
+
+package com.example.rapphim.rapphim.repository;
+
+import com.example.rapphim.rapphim.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByEmail(String email);
+    Optional<User> findByName(String name);
+    boolean existsByEmail(String email);
+    boolean existsByName(String name);
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\AuthResponse.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class AuthResponse {
+    private String token;
+    private String type = "Bearer";
+    private Long id;
+    private String name;
+    private String email;
+    private String role;
+    
+    public AuthResponse(String token, Long id, String name, String email, String role) {
+        this.token = token;
+        this.id = id;
+        this.name = name;
+        this.email = email;
+        this.role = role;
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\ChangePasswordRequest.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ChangePasswordRequest {
+    private String oldPassword;
+    private String newPassword;
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\CreatePaymentRequest.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class CreatePaymentRequest {
+    private List<Long> ticketIds; // Danh sách ID vé cần thanh toán
+    private String returnUrl; // URL để redirect sau khi thanh toán (từ frontend)
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\LoginRequest.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class LoginRequest {
+    private String email;
+    private String password;
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\MomoCallbackRequest.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class MomoCallbackRequest {
+    private String partnerCode;
+    private String orderId;
+    private String requestId;
+    private Long amount;
+    private String orderInfo;
+    private String orderType;
+    private Long transId; // Transaction ID từ MoMo
+    private Integer resultCode;
+    private String message;
+    private String payType;
+    private Long responseTime;
+    private String extraData;
+    private String signature;
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\MomoPaymentRequest.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class MomoPaymentRequest {
+    private String partnerCode;
+    private String partnerName;
+    private String storeId;
+    private String requestId;
+    private Long amount;
+    private String orderId;
+    private String orderInfo;
+    private String redirectUrl;
+    private String ipnUrl;
+    private String requestType;
+    private String extraData;
+    private String lang;
+    private String signature;
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\MomoPaymentResponse.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class MomoPaymentResponse {
+    private String partnerCode;
+    private String orderId;
+    private String requestId;
+    private Long amount;
+    private Long responseTime;
+    private String message;
+    private Integer resultCode;
+    private String payUrl;
+    private String deeplink;
+    private String qrCodeUrl;
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\MovieRequest.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class MovieRequest {
+    private String title;
+    private String genre;
+    private Integer duration;
+    private String description;
+    private LocalDate releaseDate;
+    private String imageUrl;
+    private String trailerUrl;
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\RegisterRequest.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import com.example.rapphim.rapphim.entity.User;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class RegisterRequest {
+    private String name;
+    private String email;
+    private String password;
+    private User.Role role = User.Role.CUSTOMER;
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\ReviewRequest.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ReviewRequest {
+    private Integer star;
+    private String comment;
+    private Long movieId;
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\RoomLayoutDTO.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class RoomLayoutDTO {
+    private Long roomID;
+    private String roomName;
+    private Integer totalRows;
+    private Integer totalColumns;
+    private String rowLabels;
+    private String roomType;
+    private List<SeatConfigDTO> seats;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SeatConfigDTO {
+        private String seatNumber;   // "A1", "B5"
+        private String rowLabel;     // "A", "B"
+        private Integer columnNumber; // 1, 2, 3
+        private String seatType;     // "STANDARD", "VIP", "COUPLE", "PREMIUM"
+        private String status;       // "AVAILABLE", "BOOKED", "MAINTENANCE", "DISABLED"
+        private Double priceMultiplier; // 1.0, 1.5, 2.0
+        private Boolean exists;      // true/false (có ghế hay là lối đi)
+        private Boolean isCouple;    // true nếu là ghế đôi
+        private Boolean isPremium;   // true nếu là ghế premium
+        private Long seatID;         // ID của ghế (nếu có)
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\ShowtimeRequest.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ShowtimeRequest {
+    private LocalTime startTime;
+    private LocalTime endTime;
+    private LocalDate showtimeDate;
+    private String description;
+    private Double basePrice;  // Giá vé cơ bản
+    private Long movieId;
+    private Long roomId;
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\TicketRequest.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class TicketRequest {
+    private Long showtimeId;
+    private List<Long> seatIds; // Hỗ trợ đặt nhiều ghế cùng lúc
+    private List<Long> comboIds; // Danh sách combo được chọn (optional)
+    private String promotionCode; // Mã khuyến mãi (optional)
+    // Đã loại bỏ trường price vì giá sẽ tự động tính = showtime.basePrice × seat.priceMultiplier + tổng giá combo
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\UpdateUserRequest.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class UpdateUserRequest {
+    private String name;
+    private String email;
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\UploadResponse.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class UploadResponse {
+    private Boolean success;
+    private String message;
+    private UploadData data;
+    private String timestamp;
+    
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class UploadData {
+        private String imageUrl;
+        private String videoUrl;
+        private String filename;
+        private Long size;
+        private String mimetype;
+    }
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\dto\VerifyOtpRequest.java ===
+
+package com.example.rapphim.rapphim.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class VerifyOtpRequest {
+    private String email;
+    private String otpCode;
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\AuthService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.dto.AuthResponse;
+import com.example.rapphim.rapphim.dto.LoginRequest;
+import com.example.rapphim.rapphim.dto.RegisterRequest;
+import com.example.rapphim.rapphim.entity.User;
+import com.example.rapphim.rapphim.repository.UserRepository;
+import com.example.rapphim.rapphim.util.JwtUtil;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+@Service
+public class AuthService {
+    
+    @Autowired
+    private AuthenticationManager authenticationManager;
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+    
+    @Autowired
+    private JwtUtil jwtUtil;
+    
+    @Autowired
+    private OTPService otpService;
+    
+    @Autowired
+    private EmailService emailService;
+    
+    public AuthResponse login(LoginRequest loginRequest) {
+        Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                        loginRequest.getEmail(),
+                        loginRequest.getPassword()
+                )
+        );
+        
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        User user = (User) authentication.getPrincipal();
+        String jwt = jwtUtil.generateToken(user);
+        
+        return new AuthResponse(jwt, user.getUserID(), user.getName(), user.getEmail(), user.getRole().name());
+    }
+    
+    public String register(RegisterRequest registerRequest) {
+        if (userRepository.existsByEmail(registerRequest.getEmail())) {
+            throw new RuntimeException("Email is already taken!");
+        }
+        
+        if (userRepository.existsByName(registerRequest.getName())) {
+            throw new RuntimeException("Username is already taken!");
+        }
+        
+        // Tạo user tạm thời (chưa lưu vào DB)
+        // Sẽ lưu sau khi verify OTP
+        
+        // Generate và gửi OTP
+        otpService.generateAndSendOTP(registerRequest.getEmail());
+        
+        return "OTP has been sent to " + registerRequest.getEmail() + ". Please verify to complete registration.";
+    }
+    
+    public AuthResponse verifyOtpAndCompleteRegistration(String email, String otpCode, RegisterRequest registerRequest) {
+        // Verify OTP
+        if (!otpService.verifyOTP(email, otpCode)) {
+            throw new RuntimeException("Invalid or expired OTP");
+        }
+        
+        // Check lại email và name (phòng trường hợp đăng ký trùng trong lúc chờ OTP)
+        if (userRepository.existsByEmail(registerRequest.getEmail())) {
+            throw new RuntimeException("Email is already taken!");
+        }
+        
+        if (userRepository.existsByName(registerRequest.getName())) {
+            throw new RuntimeException("Username is already taken!");
+        }
+        
+        // Tạo user mới
+        User user = new User();
+        user.setName(registerRequest.getName());
+        user.setEmail(registerRequest.getEmail());
+        user.setPassword(passwordEncoder.encode(registerRequest.getPassword()));
+        user.setRole(registerRequest.getRole());
+        
+        User savedUser = userRepository.save(user);
+        
+        // Gửi email chào mừng
+        emailService.sendWelcomeEmail(savedUser.getEmail(), savedUser.getName());
+        
+        // Generate JWT token
+        String jwt = jwtUtil.generateToken(savedUser);
+        
+        return new AuthResponse(jwt, savedUser.getUserID(), savedUser.getName(), 
+                              savedUser.getEmail(), savedUser.getRole().name());
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\CloudinaryService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.cloudinary.Cloudinary;
+import com.cloudinary.utils.ObjectUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.util.Map;
+
+@Service
+public class CloudinaryService {
+    
+    @Autowired
+    private Cloudinary cloudinary;
+    
+    /**
+     * Upload image to Cloudinary
+     * @param file MultipartFile image
+     * @return URL of uploaded image
+     */
+    public String uploadImage(MultipartFile file) throws IOException {
+        Map uploadResult = cloudinary.uploader().upload(file.getBytes(), 
+            ObjectUtils.asMap(
+                "folder", "rapphim/images",
+                "resource_type", "image"
+            ));
+        return uploadResult.get("secure_url").toString();
+    }
+    
+    /**
+     * Upload video (trailer) to Cloudinary
+     * @param file MultipartFile video
+     * @return URL of uploaded video
+     */
+    public String uploadVideo(MultipartFile file) throws IOException {
+        Map uploadResult = cloudinary.uploader().upload(file.getBytes(), 
+            ObjectUtils.asMap(
+                "folder", "rapphim/trailers",
+                "resource_type", "video"
+            ));
+        return uploadResult.get("secure_url").toString();
+    }
+    
+    /**
+     * Delete file from Cloudinary
+     * @param publicId Public ID of the file
+     * @param resourceType Type of resource (image/video)
+     */
+    public void deleteFile(String publicId, String resourceType) throws IOException {
+        cloudinary.uploader().destroy(publicId, 
+            ObjectUtils.asMap("resource_type", resourceType));
+    }
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\ComboService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.entity.Combo;
+import com.example.rapphim.rapphim.repository.ComboRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class ComboService {
+    
+    @Autowired
+    private ComboRepository comboRepository;
+    
+    public List<Combo> getAllCombos() {
+        return comboRepository.findAll();
+    }
+    
+    public Optional<Combo> getComboById(Long id) {
+        return comboRepository.findById(id);
+    }
+    
+    public List<Combo> searchCombosByName(String name) {
+        return comboRepository.findByNameComboContainingIgnoreCase(name);
+    }
+    
+    public Combo createCombo(Combo combo) {
+        return comboRepository.save(combo);
+    }
+    
+    public Combo updateCombo(Long id, Combo comboDetails) {
+        Combo combo = comboRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Combo not found"));
+        
+        combo.setNameCombo(comboDetails.getNameCombo());
+        combo.setPrice(comboDetails.getPrice());
+        combo.setDescription(comboDetails.getDescription());
+        
+        return comboRepository.save(combo);
+    }
+    
+    public void deleteCombo(Long id) {
+        comboRepository.deleteById(id);
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\EmailService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.stereotype.Service;
+
+@Service
+public class EmailService {
+    
+    @Autowired
+    private JavaMailSender mailSender;
+    
+    public void sendOtpEmail(String toEmail, String otpCode) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom("daothanhtu2018@gmail.com");
+            message.setTo(toEmail);
+            message.setSubject("Xác thực tài khoản RapPhim - Mã OTP");
+            message.setText(buildOtpEmailContent(otpCode));
+            
+            mailSender.send(message);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to send OTP email: " + e.getMessage());
+        }
+    }
+    
+    private String buildOtpEmailContent(String otpCode) {
+        return "Chào bạn,\n\n" +
+               "Cảm ơn bạn đã đăng ký tài khoản tại RapPhim Cinema.\n\n" +
+               "Mã OTP xác thực của bạn là: " + otpCode + "\n\n" +
+               "Mã OTP này có hiệu lực trong 5 phút.\n\n" +
+               "Nếu bạn không thực hiện đăng ký này, vui lòng bỏ qua email này.\n\n" +
+               "Trân trọng,\n" +
+               "RapPhim Cinema Team";
+    }
+    
+    public void sendWelcomeEmail(String toEmail, String userName) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom("daothanhtu2018@gmail.com");
+            message.setTo(toEmail);
+            message.setSubject("Chào mừng đến với RapPhim Cinema!");
+            message.setText(buildWelcomeEmailContent(userName));
+            
+            mailSender.send(message);
+        } catch (Exception e) {
+            // Log error but don't throw exception
+            System.err.println("Failed to send welcome email: " + e.getMessage());
+        }
+    }
+    
+    private String buildWelcomeEmailContent(String userName) {
+        return "Chào " + userName + ",\n\n" +
+               "Tài khoản của bạn đã được xác thực thành công!\n\n" +
+               "Bạn có thể bắt đầu đặt vé xem phim tại RapPhim Cinema.\n\n" +
+               "Trải nghiệm những bộ phim tuyệt vời cùng chúng tôi!\n\n" +
+               "Trân trọng,\n" +
+               "RapPhim Cinema Team";
+    }
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\MoMoService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.dto.*;
+import com.example.rapphim.rapphim.entity.Payment;
+import com.example.rapphim.rapphim.entity.Ticket;
+import com.example.rapphim.rapphim.entity.User;
+import com.example.rapphim.rapphim.repository.PaymentRepository;
+import com.example.rapphim.rapphim.repository.TicketRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class MoMoService {
+    
+    private final PaymentRepository paymentRepository;
+    private final TicketRepository ticketRepository;
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    
+    @Value("${momo.partner.code}")
+    private String partnerCode;
+    
+    @Value("${momo.access.key}")
+    private String accessKey;
+    
+    @Value("${momo.secret.key}")
+    private String secretKey;
+    
+    @Value("${momo.api.endpoint}")
+    private String momoApiEndpoint;
+    
+    @Value("${momo.ipn.url}")
+    private String ipnUrl;
+    
+    @Value("${momo.partner.name:RapPhim Cinema}")
+    private String partnerName;
+    
+    @Value("${momo.store.id:RapPhim01}")
+    private String storeId;
+    
+    /**
+     * Tạo payment request và gửi lên MoMo
+     */
+    @Transactional
+    public Payment createPayment(CreatePaymentRequest request) {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        
+        // Lấy danh sách vé
+        List<Ticket> tickets = new ArrayList<>();
+        double totalAmount = 0.0;
+        
+        for (Long ticketId : request.getTicketIds()) {
+            Ticket ticket = ticketRepository.findById(ticketId)
+                    .orElseThrow(() -> new RuntimeException("Ticket not found with id: " + ticketId));
+            
+            // Kiểm tra vé có thuộc user hiện tại không
+            if (!ticket.getCustomer().getUserID().equals(currentUser.getUserID())) {
+                throw new RuntimeException("Ticket does not belong to current user");
+            }
+            
+            // Kiểm tra vé chưa được thanh toán
+            if (ticket.getStatus() != Ticket.Status.ACTIVE) {
+                throw new RuntimeException("Ticket " + ticketId + " is not available for payment");
+            }
+            
+            tickets.add(ticket);
+            totalAmount += ticket.getPrice();
+        }
+        
+        // Tạo payment record
+        Payment payment = new Payment();
+        payment.setCustomer(currentUser);
+        payment.setTickets(tickets);
+        payment.setAmount(totalAmount);
+        payment.setMethod("MOMO");
+        payment.setStatus(Payment.Status.PENDING);
+        
+        // Generate unique IDs
+        String orderId = "ORDER_" + System.currentTimeMillis();
+        String requestId = UUID.randomUUID().toString();
+        
+        payment.setOrderId(orderId);
+        payment.setRequestId(requestId);
+        
+        // Lưu payment trước
+        payment = paymentRepository.save(payment);
+        
+        // Chuẩn bị request MoMo
+        String orderInfo = "Thanh toan ve xem phim - " + tickets.size() + " ve";
+        String returnUrl = request.getReturnUrl() != null ? request.getReturnUrl() : "http://localhost:3000/payment/result";
+        long amount = Math.round(totalAmount);
+        
+        // Tạo signature
+        String rawSignature = "accessKey=" + accessKey +
+                "&amount=" + amount +
+                "&extraData=" +
+                "&ipnUrl=" + ipnUrl +
+                "&orderId=" + orderId +
+                "&orderInfo=" + orderInfo +
+                "&partnerCode=" + partnerCode +
+                "&redirectUrl=" + returnUrl +
+                "&requestId=" + requestId +
+                "&requestType=captureWallet";
+        
+        String signature = generateHmacSHA256(rawSignature, secretKey);
+        
+        // Tạo MoMo request
+        MomoPaymentRequest momoRequest = new MomoPaymentRequest();
+        momoRequest.setPartnerCode(partnerCode);
+        momoRequest.setPartnerName(partnerName);
+        momoRequest.setStoreId(storeId);
+        momoRequest.setRequestId(requestId);
+        momoRequest.setAmount(amount);
+        momoRequest.setOrderId(orderId);
+        momoRequest.setOrderInfo(orderInfo);
+        momoRequest.setRedirectUrl(returnUrl);
+        momoRequest.setIpnUrl(ipnUrl);
+        momoRequest.setRequestType("captureWallet");
+        momoRequest.setExtraData("");
+        momoRequest.setLang("vi");
+        momoRequest.setSignature(signature);
+        
+        try {
+            // Gọi MoMo API
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            HttpEntity<MomoPaymentRequest> entity = new HttpEntity<>(momoRequest, headers);
+            ResponseEntity<MomoPaymentResponse> response = restTemplate.postForEntity(
+                    momoApiEndpoint,
+                    entity,
+                    MomoPaymentResponse.class
+            );
+            
+            MomoPaymentResponse momoResponse = response.getBody();
+            
+            if (momoResponse != null) {
+                payment.setPaymentUrl(momoResponse.getPayUrl());
+                payment.setResultCode(momoResponse.getResultCode());
+                payment.setMessage(momoResponse.getMessage());
+                
+                if (momoResponse.getResultCode() == 0) {
+                    // Success - có payment URL
+                    payment = paymentRepository.save(payment);
+                } else {
+                    // Failed
+                    payment.setStatus(Payment.Status.FAILED);
+                    payment = paymentRepository.save(payment);
+                    throw new RuntimeException("MoMo payment creation failed: " + momoResponse.getMessage());
+                }
+            }
+            
+        } catch (Exception e) {
+            payment.setStatus(Payment.Status.FAILED);
+            payment.setMessage("Error calling MoMo API: " + e.getMessage());
+            paymentRepository.save(payment);
+            throw new RuntimeException("Failed to create MoMo payment: " + e.getMessage());
+        }
+        
+        return payment;
+    }
+    
+    /**
+     * Xử lý callback từ MoMo
+     */
+    @Transactional
+    public void handleCallback(MomoCallbackRequest callback) {
+        // Verify signature
+        String rawSignature = "accessKey=" + accessKey +
+                "&amount=" + callback.getAmount() +
+                "&extraData=" + callback.getExtraData() +
+                "&message=" + callback.getMessage() +
+                "&orderId=" + callback.getOrderId() +
+                "&orderInfo=" + callback.getOrderInfo() +
+                "&orderType=" + callback.getOrderType() +
+                "&partnerCode=" + callback.getPartnerCode() +
+                "&payType=" + callback.getPayType() +
+                "&requestId=" + callback.getRequestId() +
+                "&responseTime=" + callback.getResponseTime() +
+                "&resultCode=" + callback.getResultCode() +
+                "&transId=" + callback.getTransId();
+        
+        String signature = generateHmacSHA256(rawSignature, secretKey);
+        
+        if (!signature.equals(callback.getSignature())) {
+            throw new RuntimeException("Invalid signature from MoMo callback");
+        }
+        
+        // Tìm payment
+        Payment payment = paymentRepository.findByOrderId(callback.getOrderId())
+                .orElseThrow(() -> new RuntimeException("Payment not found with orderId: " + callback.getOrderId()));
+        
+        // Cập nhật payment status
+        payment.setMomoTransId(String.valueOf(callback.getTransId()));
+        payment.setResultCode(callback.getResultCode());
+        payment.setMessage(callback.getMessage());
+        
+        if (callback.getResultCode() == 0) {
+            // Thanh toán thành công
+            payment.setStatus(Payment.Status.COMPLETED);
+            
+            // Cập nhật trạng thái vé
+            for (Ticket ticket : payment.getTickets()) {
+                ticket.setStatus(Ticket.Status.ACTIVE);
+                ticketRepository.save(ticket);
+            }
+        } else {
+            // Thanh toán thất bại
+            payment.setStatus(Payment.Status.FAILED);
+            
+            // Hủy vé và trả ghế
+            for (Ticket ticket : payment.getTickets()) {
+                ticket.setStatus(Ticket.Status.CANCELLED);
+                ticket.getSeat().setStatus(com.example.rapphim.rapphim.entity.Seat.Status.AVAILABLE);
+                ticketRepository.save(ticket);
+            }
+        }
+        
+        paymentRepository.save(payment);
+    }
+    
+    /**
+     * Kiểm tra trạng thái thanh toán
+     */
+    public Payment getPaymentByOrderId(String orderId) {
+        return paymentRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new RuntimeException("Payment not found with orderId: " + orderId));
+    }
+    
+    /**
+     * Lấy danh sách payment của user hiện tại
+     */
+    public List<Payment> getMyPayments() {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return paymentRepository.findByCustomerOrderByCreatedAtDesc(currentUser);
+    }
+    
+    /**
+     * Generate HMAC SHA256 signature
+     */
+    private String generateHmacSHA256(String data, String key) {
+        try {
+            Mac sha256Hmac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            sha256Hmac.init(secretKey);
+            byte[] hash = sha256Hmac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+            
+            // Convert to hex string
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (Exception e) {
+            throw new RuntimeException("Error generating signature: " + e.getMessage());
+        }
+    }
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\MovieService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.dto.MovieRequest;
+import com.example.rapphim.rapphim.entity.Movie;
+import com.example.rapphim.rapphim.repository.MovieRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class MovieService {
+    
+    @Autowired
+    private MovieRepository movieRepository;
+    
+    public List<Movie> getAllMovies() {
+        return movieRepository.findAll();
+    }
+    
+    public Optional<Movie> getMovieById(Long id) {
+        return movieRepository.findById(id);
+    }
+    
+    public List<Movie> searchMoviesByTitle(String title) {
+        return movieRepository.findByTitleContainingIgnoreCase(title);
+    }
+    
+    public List<Movie> getMoviesByGenre(String genre) {
+        return movieRepository.findByGenreContainingIgnoreCase(genre);
+    }
+    
+    public List<Movie> getMostPopularMovies() {
+        return movieRepository.findMostPopularMovies();
+    }
+    
+    public Movie createMovie(MovieRequest movieRequest) {
+        Movie movie = new Movie();
+        movie.setTitle(movieRequest.getTitle());
+        movie.setGenre(movieRequest.getGenre());
+        movie.setDuration(movieRequest.getDuration());
+        movie.setDescription(movieRequest.getDescription());
+        movie.setReleaseDate(movieRequest.getReleaseDate());
+        movie.setImageUrl(movieRequest.getImageUrl());
+        movie.setTrailerUrl(movieRequest.getTrailerUrl());
+        movie.setTotalTicketLove(0);
+        
+        return movieRepository.save(movie);
+    }
+    
+    public Movie updateMovie(Long id, MovieRequest movieRequest) {
+        Movie movie = movieRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Movie not found with id: " + id));
+        
+        movie.setTitle(movieRequest.getTitle());
+        movie.setGenre(movieRequest.getGenre());
+        movie.setDuration(movieRequest.getDuration());
+        movie.setDescription(movieRequest.getDescription());
+        movie.setReleaseDate(movieRequest.getReleaseDate());
+        
+        // Update imageUrl and trailerUrl if provided
+        if (movieRequest.getImageUrl() != null) {
+            movie.setImageUrl(movieRequest.getImageUrl());
+        }
+        if (movieRequest.getTrailerUrl() != null) {
+            movie.setTrailerUrl(movieRequest.getTrailerUrl());
+        }
+        
+        return movieRepository.save(movie);
+    }
+    
+    public void deleteMovie(Long id) {
+        movieRepository.deleteById(id);
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\OTPService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.entity.OTP;
+import com.example.rapphim.rapphim.repository.OTPRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.Optional;
+import java.util.Random;
+
+@Service
+public class OTPService {
+    
+    @Autowired
+    private OTPRepository otpRepository;
+    
+    @Autowired
+    private EmailService emailService;
+    
+    private static final int OTP_LENGTH = 6;
+    private static final int OTP_EXPIRATION_MINUTES = 5;
+    
+    /**
+     * Tạo và gửi OTP qua email
+     */
+    public String generateAndSendOTP(String email) {
+        // Generate 6-digit OTP
+        String otpCode = generateOtpCode();
+        
+        // Calculate expiration time (5 minutes from now)
+        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(OTP_EXPIRATION_MINUTES);
+        
+        // Save OTP to database
+        OTP otp = new OTP(email, otpCode, expiresAt);
+        otpRepository.save(otp);
+        
+        // Send OTP via email
+        emailService.sendOtpEmail(email, otpCode);
+        
+        return otpCode; // For testing purposes, in production don't return this
+    }
+    
+    /**
+     * Verify OTP
+     */
+    @Transactional
+    public boolean verifyOTP(String email, String otpCode) {
+        Optional<OTP> otpOptional = otpRepository.findByEmailAndOtpCodeAndVerifiedFalse(email, otpCode);
+        
+        if (otpOptional.isEmpty()) {
+            return false;
+        }
+        
+        OTP otp = otpOptional.get();
+        
+        // Check if OTP is expired
+        if (otp.isExpired()) {
+            return false;
+        }
+        
+        // Mark OTP as verified
+        otp.setVerified(true);
+        otpRepository.save(otp);
+        
+        return true;
+    }
+    
+    /**
+     * Kiểm tra xem email đã được verify chưa
+     */
+    public boolean isEmailVerified(String email) {
+        Optional<OTP> otpOptional = otpRepository.findTopByEmailOrderByCreatedAtDesc(email);
+        return otpOptional.isPresent() && otpOptional.get().getVerified();
+    }
+    
+    /**
+     * Generate random 6-digit OTP code
+     */
+    private String generateOtpCode() {
+        Random random = new Random();
+        int otp = 100000 + random.nextInt(900000); // 6-digit number
+        return String.valueOf(otp);
+    }
+    
+    /**
+     * Xóa OTP đã hết hạn (có thể dùng scheduled task)
+     */
+    @Transactional
+    public void deleteExpiredOtps() {
+        otpRepository.deleteByExpiresAtBefore(LocalDateTime.now());
+    }
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\PromotionService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.entity.Promotion;
+import com.example.rapphim.rapphim.repository.PromotionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class PromotionService {
+    
+    @Autowired
+    private PromotionRepository promotionRepository;
+    
+    public List<Promotion> getAllPromotions() {
+        return promotionRepository.findAll();
+    }
+    
+    public Optional<Promotion> getPromotionById(Long id) {
+        return promotionRepository.findById(id);
+    }
+    
+    public Optional<Promotion> getPromotionByCode(String code) {
+        return promotionRepository.findByCode(code);
+    }
+    
+    public List<Promotion> getActivePromotions() {
+        return promotionRepository.findActivePromotions(LocalDate.now());
+    }
+    
+    public Promotion createPromotion(Promotion promotion) {
+        return promotionRepository.save(promotion);
+    }
+    
+    public Promotion updatePromotion(Long id, Promotion promotionDetails) {
+        Promotion promotion = promotionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Promotion not found"));
+        
+        promotion.setCode(promotionDetails.getCode());
+        promotion.setDiscount(promotionDetails.getDiscount());
+        promotion.setStartDate(promotionDetails.getStartDate());
+        promotion.setEndDate(promotionDetails.getEndDate());
+        
+        return promotionRepository.save(promotion);
+    }
+    
+    public void deletePromotion(Long id) {
+        promotionRepository.deleteById(id);
+    }
+    
+    public boolean isPromotionValid(String code) {
+        Optional<Promotion> promotion = promotionRepository.findByCode(code);
+        if (promotion.isPresent()) {
+            LocalDate now = LocalDate.now();
+            Promotion promo = promotion.get();
+            return !now.isBefore(promo.getStartDate()) && !now.isAfter(promo.getEndDate());
+        }
+        return false;
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\ReviewService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.dto.ReviewRequest;
+import com.example.rapphim.rapphim.entity.Movie;
+import com.example.rapphim.rapphim.entity.Review;
+import com.example.rapphim.rapphim.entity.User;
+import com.example.rapphim.rapphim.repository.MovieRepository;
+import com.example.rapphim.rapphim.repository.ReviewRepository;
+import com.example.rapphim.rapphim.repository.TicketRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class ReviewService {
+    
+    @Autowired
+    private ReviewRepository reviewRepository;
+    
+    @Autowired
+    private MovieRepository movieRepository;
+    
+    @Autowired
+    private TicketRepository ticketRepository;
+    
+    public List<Review> getAllReviews() {
+        return reviewRepository.findAll();
+    }
+    
+    public Optional<Review> getReviewById(Long id) {
+        return reviewRepository.findById(id);
+    }
+    
+    public List<Review> getReviewsByMovie(Long movieId) {
+        Movie movie = movieRepository.findById(movieId)
+                .orElseThrow(() -> new RuntimeException("Movie not found"));
+        return reviewRepository.findByMovie(movie);
+    }
+    
+    public List<Review> getMyReviews() {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return reviewRepository.findByCustomer(currentUser);
+    }
+    
+    public Double getAverageRatingByMovie(Long movieId) {
+        Movie movie = movieRepository.findById(movieId)
+                .orElseThrow(() -> new RuntimeException("Movie not found"));
+        return reviewRepository.getAverageRatingByMovie(movie);
+    }
+    
+    public Review createReview(ReviewRequest reviewRequest) {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        
+        Movie movie = movieRepository.findById(reviewRequest.getMovieId())
+                .orElseThrow(() -> new RuntimeException("Movie not found"));
+        
+        // Check if user has watched the movie (purchased ticket and showtime has passed)
+        LocalDate currentDate = LocalDate.now();
+        LocalTime currentTime = LocalTime.now();
+        
+        boolean hasWatched = ticketRepository.hasUserWatchedMovie(
+            currentUser, 
+            reviewRequest.getMovieId(), 
+            currentDate, 
+            currentTime
+        );
+        
+        if (!hasWatched) {
+            throw new RuntimeException("You can only review movies that you have watched. Please purchase a ticket and wait until the showtime has passed.");
+        }
+        
+        // Check if user already reviewed this movie
+        Optional<Review> existingReview = reviewRepository.findByCustomerAndMovie(currentUser, movie);
+        if (existingReview.isPresent()) {
+            throw new RuntimeException("You have already reviewed this movie");
+        }
+        
+        Review review = new Review();
+        review.setStar(reviewRequest.getStar());
+        review.setComment(reviewRequest.getComment());
+        review.setCustomer(currentUser);
+        review.setMovie(movie);
+        
+        return reviewRepository.save(review);
+    }
+    
+    public Review createReview(Long movieId, Integer star, String comment) {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        
+        Movie movie = movieRepository.findById(movieId)
+                .orElseThrow(() -> new RuntimeException("Movie not found"));
+        
+        Review review = new Review();
+        review.setStar(star);
+        review.setComment(comment);
+        review.setCustomer(currentUser);
+        review.setMovie(movie);
+        
+        return reviewRepository.save(review);
+    }
+    
+    public Review updateReview(Long id, Integer star, String comment) {
+        Review review = reviewRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Review not found"));
+        
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        
+        if (!review.getCustomer().getUserID().equals(currentUser.getUserID())) {
+            throw new RuntimeException("You can only update your own reviews");
+        }
+        
+        review.setStar(star);
+        review.setComment(comment);
+        
+        return reviewRepository.save(review);
+    }
+    
+    public void deleteReview(Long id) {
+        Review review = reviewRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Review not found"));
+        
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        
+        if (!review.getCustomer().getUserID().equals(currentUser.getUserID()) && 
+            !currentUser.getRole().equals(User.Role.ADMIN)) {
+            throw new RuntimeException("You can only delete your own reviews");
+        }
+        
+        reviewRepository.deleteById(id);
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\RoomService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.dto.RoomLayoutDTO;
+import com.example.rapphim.rapphim.entity.Room;
+import com.example.rapphim.rapphim.entity.Seat;
+import com.example.rapphim.rapphim.repository.RoomRepository;
+import com.example.rapphim.rapphim.repository.SeatRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+@Service
+@RequiredArgsConstructor
+public class RoomService {
+
+    private final RoomRepository roomRepository;
+    private final SeatRepository seatRepository;
+    private final ObjectMapper objectMapper;
+
+    public List<Room> getAllRooms() {
+        return roomRepository.findAll();
+    }
+
+    public Room getRoomById(Long id) {
+        return roomRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng với ID: " + id));
+    }
+
+    public Room createRoom(Room room) {
+        // Set default values
+        if (room.getTotalSeats() == null) {
+            room.setTotalSeats(0);
+        }
+        if (room.getRoomType() == null) {
+            room.setRoomType("STANDARD");
+        }
+        return roomRepository.save(room);
+    }
+
+    public Room updateRoom(Long id, Room room) {
+        Room existingRoom = getRoomById(id);
+        existingRoom.setRoomName(room.getRoomName());
+        existingRoom.setLayout(room.getLayout());
+        existingRoom.setRoomType(room.getRoomType());
+        existingRoom.setTotalRows(room.getTotalRows());
+        existingRoom.setTotalColumns(room.getTotalColumns());
+        existingRoom.setRowLabels(room.getRowLabels());
+
+        return roomRepository.save(existingRoom);
+    }
+
+    @Transactional
+    public void deleteRoom(Long id) {
+        Room room = getRoomById(id);
+        roomRepository.delete(room);
+    }
+
+    public List<Seat> getSeatsByRoom(Long roomId) {
+        Room room = getRoomById(roomId);
+        return seatRepository.findByRoomOrderByRowLabelAscColumnNumberAsc(room);
+    }
+
+    // ===== PHƯƠNG THỨC QUAN TRỌNG: LƯU LAYOUT =====
+    @Transactional
+    public Room saveRoomLayout(Long roomId, RoomLayoutDTO layoutDTO) {
+        Room room = getRoomById(roomId);
+
+        // 1. Xóa tất cả ghế cũ
+        seatRepository.deleteByRoom(room);
+
+        // 2. Cập nhật thông tin phòng
+        room.setTotalRows(layoutDTO.getTotalRows());
+        room.setTotalColumns(layoutDTO.getTotalColumns());
+        room.setRowLabels(layoutDTO.getRowLabels());
+        room.setRoomType(layoutDTO.getRoomType() != null ? layoutDTO.getRoomType() : "STANDARD");
+
+        // 3. Lưu layout dạng JSON
+        try {
+            String layoutJson = objectMapper.writeValueAsString(layoutDTO);
+            room.setLayoutJson(layoutJson);
+        } catch (Exception e) {
+            throw new RuntimeException("Lỗi khi lưu layout JSON: " + e.getMessage());
+        }
+
+        // 4. Tạo ghế mới từ DTO
+        List<Seat> newSeats = new ArrayList<>();
+        int seatCount = 0;
+
+        for (RoomLayoutDTO.SeatConfigDTO seatConfig : layoutDTO.getSeats()) {
+            // Chỉ tạo ghế nếu exists = true
+            if (seatConfig.getExists() != null && seatConfig.getExists()) {
+                Seat seat = new Seat();
+                seat.setSeatNumber(seatConfig.getSeatNumber());
+                seat.setRowLabel(seatConfig.getRowLabel());
+                seat.setColumnNumber(seatConfig.getColumnNumber());
+
+                // Set seat type với giá trị mặc định
+                String seatType = seatConfig.getSeatType();
+                if (seatType == null) {
+                    // Auto-detect seat type
+                    if (Boolean.TRUE.equals(seatConfig.getIsCouple())) {
+                        seatType = "COUPLE";
+                    } else if (Boolean.TRUE.equals(seatConfig.getIsPremium())) {
+                        seatType = "PREMIUM";
+                    } else {
+                        seatType = "STANDARD";
+                    }
+                }
+                seat.setSeatType(seatType);
+
+                // Set price multiplier
+                if (seatConfig.getPriceMultiplier() != null) {
+                    seat.setPriceMultiplier(seatConfig.getPriceMultiplier());
+                } else {
+                    // Auto-set price based on seat type
+                    switch (seatType) {
+                        case "VIP":
+                            seat.setPriceMultiplier(1.5);
+                            break;
+                        case "PREMIUM":
+                            seat.setPriceMultiplier(1.3);
+                            break;
+                        case "COUPLE":
+                            seat.setPriceMultiplier(2.0);
+                            break;
+                        default:
+                            seat.setPriceMultiplier(1.0);
+                    }
+                }
+
+                // Parse status
+                if (seatConfig.getStatus() != null) {
+                    try {
+                        seat.setStatus(Seat.Status.valueOf(seatConfig.getStatus()));
+                    } catch (IllegalArgumentException e) {
+                        seat.setStatus(Seat.Status.AVAILABLE);
+                    }
+                } else {
+                    seat.setStatus(Seat.Status.AVAILABLE);
+                }
+
+                seat.setRoom(room);
+                newSeats.add(seat);
+                seatCount++;
+            }
+        }
+
+        // 5. Lưu tất cả ghế
+        if (!newSeats.isEmpty()) {
+            seatRepository.saveAll(newSeats);
+        }
+
+        // 6. Cập nhật tổng số ghế
+        room.setTotalSeats(seatCount);
+
+        return roomRepository.save(room);
+    }
+
+    @Transactional
+    public void deleteAllSeatsInRoom(Long roomId) {
+        Room room = getRoomById(roomId);
+        seatRepository.deleteByRoom(room);
+        room.setTotalSeats(0);
+        roomRepository.save(room);
+    }
+
+    @Transactional
+    public List<Seat> createBulkSeats(Long roomId, List<Seat> seats) {
+        Room room = getRoomById(roomId);
+
+        // Parse seat number to extract row and column
+        Pattern pattern = Pattern.compile("^([A-Z]+)(\\d+)$");
+
+        seats.forEach(seat -> {
+            seat.setRoom(room);
+
+            // Auto-parse row and column if not provided
+            if (seat.getRowLabel() == null || seat.getColumnNumber() == null) {
+                Matcher matcher = pattern.matcher(seat.getSeatNumber());
+                if (matcher.matches()) {
+                    seat.setRowLabel(matcher.group(1));
+                    seat.setColumnNumber(Integer.parseInt(matcher.group(2)));
+                }
+            }
+
+            if (seat.getSeatType() == null) {
+                seat.setSeatType("STANDARD");
+            }
+            if (seat.getPriceMultiplier() == null) {
+                seat.setPriceMultiplier(1.0);
+            }
+        });
+
+        List<Seat> savedSeats = seatRepository.saveAll(seats);
+
+        // Update total seats
+        room.setTotalSeats(seatRepository.countByRoom(room));
+        roomRepository.save(room);
+
+        return savedSeats;
+    }
+
+    // Lấy layout để hiển thị
+    public RoomLayoutDTO getRoomLayout(Long roomId) {
+        Room room = getRoomById(roomId);
+        List<Seat> seats = seatRepository.findByRoomOrderByRowLabelAscColumnNumberAsc(room);
+
+        RoomLayoutDTO dto = new RoomLayoutDTO();
+        dto.setRoomID(room.getRoomID());
+        dto.setRoomName(room.getRoomName());
+        dto.setTotalRows(room.getTotalRows());
+        dto.setTotalColumns(room.getTotalColumns());
+        dto.setRowLabels(room.getRowLabels());
+        dto.setRoomType(room.getRoomType());
+
+        List<RoomLayoutDTO.SeatConfigDTO> seatConfigs = new ArrayList<>();
+        for (Seat seat : seats) {
+            RoomLayoutDTO.SeatConfigDTO config = new RoomLayoutDTO.SeatConfigDTO();
+            config.setSeatNumber(seat.getSeatNumber());
+            config.setRowLabel(seat.getRowLabel());
+            config.setColumnNumber(seat.getColumnNumber());
+            config.setSeatType(seat.getSeatType());
+            config.setStatus(seat.getStatus().name());
+            config.setPriceMultiplier(seat.getPriceMultiplier());
+            config.setExists(true);
+            config.setSeatID(seat.getSeatID());
+
+            // Set additional flags
+            config.setIsCouple("COUPLE".equals(seat.getSeatType()));
+            config.setIsPremium("PREMIUM".equals(seat.getSeatType()));
+
+            seatConfigs.add(config);
+        }
+        dto.setSeats(seatConfigs);
+
+        return dto;
+    }
+
+    // Lấy thông tin phòng kèm layout
+    public Room getRoomWithLayout(Long roomId) {
+        Room room = getRoomById(roomId);
+
+        // Nếu có layout JSON, parse và trả về
+        if (room.getLayoutJson() != null && !room.getLayoutJson().isEmpty()) {
+            try {
+                RoomLayoutDTO layoutDTO = objectMapper.readValue(room.getLayoutJson(), RoomLayoutDTO.class);
+                // Có thể set thêm thông tin nếu cần
+            } catch (Exception e) {
+                // Log error but don't throw
+                System.err.println("Error parsing layout JSON: " + e.getMessage());
+            }
+        }
+
+        return room;
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\SeatService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.entity.Seat;
+import com.example.rapphim.rapphim.repository.SeatRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+@Service
+@RequiredArgsConstructor
+public class SeatService {
+
+    private final SeatRepository seatRepository;
+
+    public List<Seat> getAllSeats() {
+        return seatRepository.findAll();
+    }
+
+    public Seat getSeatById(Long id) {
+        return seatRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy ghế với ID: " + id));
+    }
+
+    @Transactional
+    public Seat createSeat(Seat seat) {
+        // Auto-parse row and column from seatNumber
+        if (seat.getRowLabel() == null || seat.getColumnNumber() == null) {
+            parseSeatNumber(seat);
+        }
+
+        if (seat.getSeatType() == null) {
+            seat.setSeatType("STANDARD");
+        }
+        if (seat.getPriceMultiplier() == null) {
+            seat.setPriceMultiplier(1.0);
+        }
+
+        return seatRepository.save(seat);
+    }
+
+    @Transactional
+    public Seat updateSeat(Long id, Seat seat) {
+        Seat existingSeat = getSeatById(id);
+        existingSeat.setSeatNumber(seat.getSeatNumber());
+        existingSeat.setStatus(seat.getStatus());
+        existingSeat.setSeatType(seat.getSeatType());
+        existingSeat.setPriceMultiplier(seat.getPriceMultiplier());
+
+        // Re-parse if seat number changed
+        if (!existingSeat.getSeatNumber().equals(seat.getSeatNumber())) {
+            parseSeatNumber(existingSeat);
+        }
+
+        return seatRepository.save(existingSeat);
+    }
+
+    @Transactional
+    public void deleteSeat(Long id) {
+        Seat seat = getSeatById(id);
+        seatRepository.delete(seat);
+    }
+
+    @Transactional
+    public Seat updateSeatStatus(Long id, Seat.Status status) {
+        Seat seat = getSeatById(id);
+        seat.setStatus(status);
+        return seatRepository.save(seat);
+    }
+
+    // Helper method to parse seat number
+    private void parseSeatNumber(Seat seat) {
+        Pattern pattern = Pattern.compile("^([A-Z]+)(\\d+)$");
+        Matcher matcher = pattern.matcher(seat.getSeatNumber());
+
+        if (matcher.matches()) {
+            seat.setRowLabel(matcher.group(1));
+            seat.setColumnNumber(Integer.parseInt(matcher.group(2)));
+        }
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\ShowtimeService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.dto.ShowtimeRequest;
+import com.example.rapphim.rapphim.entity.Movie;
+import com.example.rapphim.rapphim.entity.Room;
+import com.example.rapphim.rapphim.entity.Showtime;
+import com.example.rapphim.rapphim.repository.MovieRepository;
+import com.example.rapphim.rapphim.repository.RoomRepository;
+import com.example.rapphim.rapphim.repository.ShowtimeRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class ShowtimeService {
+    
+    @Autowired
+    private ShowtimeRepository showtimeRepository;
+    
+    @Autowired
+    private MovieRepository movieRepository;
+    
+    @Autowired
+    private RoomRepository roomRepository;
+    
+    public List<Showtime> getAllShowtimes() {
+        return showtimeRepository.findAll();
+    }
+    
+    public Optional<Showtime> getShowtimeById(Long id) {
+        return showtimeRepository.findById(id);
+    }
+    
+    public List<Showtime> getShowtimesByMovie(Long movieId) {
+        Movie movie = movieRepository.findById(movieId)
+                .orElseThrow(() -> new RuntimeException("Movie not found"));
+        return showtimeRepository.findByMovie(movie);
+    }
+    
+    public List<Showtime> getShowtimesByDate(LocalDate date) {
+        return showtimeRepository.findByShowtimeDate(date);
+    }
+    
+    public Showtime createShowtime(ShowtimeRequest showtimeRequest) {
+        Movie movie = movieRepository.findById(showtimeRequest.getMovieId())
+                .orElseThrow(() -> new RuntimeException("Movie not found"));
+        
+        Room room = roomRepository.findById(showtimeRequest.getRoomId())
+                .orElseThrow(() -> new RuntimeException("Room not found"));
+        
+        Showtime showtime = new Showtime();
+        showtime.setStartTime(showtimeRequest.getStartTime());
+        showtime.setEndTime(showtimeRequest.getEndTime());
+        showtime.setShowtimeDate(showtimeRequest.getShowtimeDate());
+        showtime.setDescription(showtimeRequest.getDescription());
+        showtime.setBasePrice(showtimeRequest.getBasePrice() != null ? showtimeRequest.getBasePrice() : 100000.0);
+        showtime.setMovie(movie);
+        showtime.setRoom(room);
+        
+        return showtimeRepository.save(showtime);
+    }
+    
+    public Showtime updateShowtime(Long id, ShowtimeRequest showtimeRequest) {
+        Showtime showtime = showtimeRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Showtime not found"));
+        
+        Movie movie = movieRepository.findById(showtimeRequest.getMovieId())
+                .orElseThrow(() -> new RuntimeException("Movie not found"));
+        
+        Room room = roomRepository.findById(showtimeRequest.getRoomId())
+                .orElseThrow(() -> new RuntimeException("Room not found"));
+        
+        showtime.setStartTime(showtimeRequest.getStartTime());
+        showtime.setEndTime(showtimeRequest.getEndTime());
+        showtime.setShowtimeDate(showtimeRequest.getShowtimeDate());
+        showtime.setDescription(showtimeRequest.getDescription());
+        if (showtimeRequest.getBasePrice() != null) {
+            showtime.setBasePrice(showtimeRequest.getBasePrice());
+        }
+        showtime.setMovie(movie);
+        showtime.setRoom(room);
+        
+        return showtimeRepository.save(showtime);
+    }
+    
+    public void deleteShowtime(Long id) {
+        showtimeRepository.deleteById(id);
+    }
+    
+    public List<Showtime> getNowShowingShowtimes() {
+        LocalDate today = LocalDate.now();
+        return showtimeRepository.findNowShowingShowtimes(today);
+    }
+    
+    public List<Showtime> getUpcomingShowtimes() {
+        LocalDate today = LocalDate.now();
+        return showtimeRepository.findUpcomingShowtimes(today);
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\TicketService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.dto.TicketRequest;
+import com.example.rapphim.rapphim.entity.*;
+import com.example.rapphim.rapphim.repository.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class TicketService {
+    
+    @Autowired
+    private TicketRepository ticketRepository;
+    
+    @Autowired
+    private ShowtimeRepository showtimeRepository;
+    
+    @Autowired
+    private SeatRepository seatRepository;
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Autowired
+    private ComboRepository comboRepository;
+    
+    @Autowired
+    private PromotionRepository promotionRepository;
+    
+    public List<Ticket> getAllTickets() {
+        return ticketRepository.findAll();
+    }
+    
+    public Optional<Ticket> getTicketById(Long id) {
+        return ticketRepository.findById(id);
+    }
+    
+    public List<Ticket> getTicketsByCustomer(Long customerId) {
+        User customer = userRepository.findById(customerId)
+                .orElseThrow(() -> new RuntimeException("Customer not found"));
+        return ticketRepository.findByCustomer(customer);
+    }
+    
+    public List<Ticket> getMyTickets() {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return ticketRepository.findByCustomer(currentUser);
+    }
+    
+    public List<Ticket> bookTicket(TicketRequest ticketRequest) {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        
+        Showtime showtime = showtimeRepository.findById(ticketRequest.getShowtimeId())
+                .orElseThrow(() -> new RuntimeException("Showtime not found"));
+        
+        // Validate tất cả ghế trước khi đặt
+        List<Seat> seats = new ArrayList<>();
+        for (Long seatId : ticketRequest.getSeatIds()) {
+            Seat seat = seatRepository.findById(seatId)
+                    .orElseThrow(() -> new RuntimeException("Seat not found with id: " + seatId));
+            
+            if (seat.getStatus() != Seat.Status.AVAILABLE) {
+                throw new RuntimeException("Seat " + seat.getSeatNumber() + " is not available");
+            }
+            
+            // Kiểm tra ghế có thuộc phòng chiếu của suất chiếu không
+            if (!seat.getRoom().getRoomID().equals(showtime.getRoom().getRoomID())) {
+                throw new RuntimeException("Seat " + seat.getSeatNumber() + " does not belong to this showtime's room");
+            }
+            
+            seats.add(seat);
+        }
+        
+        // Validate và load combos nếu có
+        List<Combo> combos = new ArrayList<>();
+        double totalComboPrice = 0.0;
+        if (ticketRequest.getComboIds() != null && !ticketRequest.getComboIds().isEmpty()) {
+            for (Long comboId : ticketRequest.getComboIds()) {
+                Combo combo = comboRepository.findById(comboId)
+                        .orElseThrow(() -> new RuntimeException("Combo not found with id: " + comboId));
+                combos.add(combo);
+                totalComboPrice += combo.getPrice();
+            }
+        }
+        
+        // Validate và áp dụng mã khuyến mãi nếu có
+        Promotion promotion = null;
+        double discountPercent = 0.0;
+        if (ticketRequest.getPromotionCode() != null && !ticketRequest.getPromotionCode().trim().isEmpty()) {
+            promotion = promotionRepository.findByCode(ticketRequest.getPromotionCode())
+                    .orElseThrow(() -> new RuntimeException("Promotion code not found: " + ticketRequest.getPromotionCode()));
+            
+            // Kiểm tra mã khuyến mãi còn hiệu lực
+            LocalDate today = LocalDate.now();
+            if (promotion.getStartDate().isAfter(today)) {
+                throw new RuntimeException("Promotion code has not started yet");
+            }
+            if (promotion.getEndDate().isBefore(today)) {
+                throw new RuntimeException("Promotion code has expired");
+            }
+            
+            discountPercent = promotion.getDiscount();
+        }
+        
+        // Tính giá combo trên mỗi vé (chia đều combo cho các vé)
+        double comboPerTicket = seats.size() > 0 ? totalComboPrice / seats.size() : 0.0;
+        
+        // Tạo vé cho từng ghế
+        List<Ticket> tickets = new ArrayList<>();
+        for (Seat seat : seats) {
+            // Tính giá vé tự động: basePrice × priceMultiplier + combo chia đều
+            Double ticketBasePrice = showtime.getBasePrice() * seat.getPriceMultiplier();
+            Double priceBeforeDiscount = ticketBasePrice + comboPerTicket;
+            
+            // Áp dụng khuyến mãi (giảm theo %)
+            Double finalPrice = priceBeforeDiscount * (1 - discountPercent / 100.0);
+            
+            // Mark seat as booked
+            seat.setStatus(Seat.Status.BOOKED);
+            seatRepository.save(seat);
+            
+            Ticket ticket = new Ticket(
+                null, // ticketID will be generated
+                finalPrice,  // Giá tự động tính (vé + combo)
+                Ticket.Status.ACTIVE,
+                LocalDate.now(),
+                showtime.getStartTime().toString(),
+                currentUser,
+                showtime.getRoom(),
+                showtime,
+                seat,
+                combos.isEmpty() ? null : new ArrayList<>(combos) // Gán combos cho mỗi vé
+            );
+            
+            tickets.add(ticketRepository.save(ticket));
+        }
+        
+        return tickets;
+    }
+    
+    public void cancelTicket(Long ticketId) {
+        Ticket ticket = ticketRepository.findById(ticketId)
+                .orElseThrow(() -> new RuntimeException("Ticket not found"));
+        
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        
+        if (!ticket.getCustomer().getUserID().equals(currentUser.getUserID()) && 
+            !currentUser.getRole().equals(User.Role.ADMIN)) {
+            throw new RuntimeException("You can only cancel your own tickets");
+        }
+        
+        ticket.setStatus(Ticket.Status.CANCELLED);
+        ticketRepository.save(ticket);
+        
+        // Make seat available again
+        Seat seat = ticket.getSeat();
+        seat.setStatus(Seat.Status.AVAILABLE);
+        seatRepository.save(seat);
+    }
+    
+    public Long getTotalTicketsSoldToday() {
+        return ticketRepository.countTicketsByDate(LocalDate.now());
+    }
+    
+    public Double getTotalRevenue(LocalDate startDate, LocalDate endDate) {
+        return ticketRepository.getTotalRevenueByDateRange(startDate, endDate);
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\UserDetailsServiceImpl.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.entity.User;
+import com.example.rapphim.rapphim.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+@Service
+public class UserDetailsServiceImpl implements UserDetailsService {
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        User user = userRepository.findByEmail(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+        
+        return user;
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\service\UserService.java ===
+
+package com.example.rapphim.rapphim.service;
+
+import com.example.rapphim.rapphim.dto.ChangePasswordRequest;
+import com.example.rapphim.rapphim.dto.UpdateUserRequest;
+import com.example.rapphim.rapphim.entity.User;
+import com.example.rapphim.rapphim.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class UserService {
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+    
+    public List<User> getAllUsers() {
+        return userRepository.findAll();
+    }
+    
+    public Optional<User> getUserById(Long id) {
+        return userRepository.findById(id);
+    }
+    
+    public User getCurrentUser() {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return userRepository.findById(currentUser.getUserID())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+    
+    public User updateUser(Long id, UpdateUserRequest request) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
+        
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        
+        // Chỉ admin hoặc chính user đó mới có thể update
+        if (!currentUser.getUserID().equals(id) && !currentUser.getRole().equals(User.Role.ADMIN)) {
+            throw new RuntimeException("You don't have permission to update this user");
+        }
+        
+        // Kiểm tra email đã tồn tại chưa (trừ email của chính user đó)
+        if (request.getEmail() != null && !request.getEmail().equals(user.getEmail())) {
+            if (userRepository.existsByEmail(request.getEmail())) {
+                throw new RuntimeException("Email is already taken!");
+            }
+            user.setEmail(request.getEmail());
+        }
+        
+        // Kiểm tra name đã tồn tại chưa (trừ name của chính user đó)
+        if (request.getName() != null && !request.getName().equals(user.getName())) {
+            if (userRepository.existsByName(request.getName())) {
+                throw new RuntimeException("Username is already taken!");
+            }
+            user.setName(request.getName());
+        }
+        
+        return userRepository.save(user);
+    }
+    
+    public User updateCurrentUser(UpdateUserRequest request) {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return updateUser(currentUser.getUserID(), request);
+    }
+    
+    public void changePassword(ChangePasswordRequest request) {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        User user = userRepository.findById(currentUser.getUserID())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        
+        // Verify old password
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+            throw new RuntimeException("Old password is incorrect");
+        }
+        
+        // Update to new password
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+    }
+    
+    public void deleteUser(Long id) {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        
+        // Chỉ admin mới có thể xóa user
+        if (!currentUser.getRole().equals(User.Role.ADMIN)) {
+            throw new RuntimeException("Only admin can delete users");
+        }
+        
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
+        
+        // Không cho phép xóa chính mình
+        if (user.getUserID().equals(currentUser.getUserID())) {
+            throw new RuntimeException("You cannot delete yourself");
+        }
+        
+        userRepository.delete(user);
+    }
+    
+    public User updateUserRole(Long id, String role) {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        
+        // Chỉ admin mới có thể thay đổi role
+        if (!currentUser.getRole().equals(User.Role.ADMIN)) {
+            throw new RuntimeException("Only admin can change user roles");
+        }
+        
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
+        
+        user.setRole(User.Role.valueOf(role.toUpperCase()));
+        return userRepository.save(user);
+    }
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\security\JwtAuthenticationFilter.java ===
+
+package com.example.rapphim.rapphim.security;
+
+import com.example.rapphim.rapphim.service.UserDetailsServiceImpl;
+import com.example.rapphim.rapphim.util.JwtUtil;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+
+@Component
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+    
+    @Autowired
+    private JwtUtil jwtUtil;
+    
+    @Autowired
+    private UserDetailsServiceImpl userDetailsService;
+    
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, 
+                                  FilterChain filterChain) throws ServletException, IOException {
+        
+        final String authorizationHeader = request.getHeader("Authorization");
+        
+        String username = null;
+        String jwt = null;
+        
+        if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
+            jwt = authorizationHeader.substring(7);
+            try {
+                username = jwtUtil.extractUsername(jwt);
+            } catch (Exception e) {
+                logger.error("Cannot get JWT Token");
+            }
+        }
+        
+        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
+            
+            if (jwtUtil.validateToken(jwt, userDetails)) {
+                UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken = 
+                    new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                usernamePasswordAuthenticationToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(usernamePasswordAuthenticationToken);
+            }
+        }
+        filterChain.doFilter(request, response);
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\util\JwtUtil.java ===
+
+package com.example.rapphim.rapphim.util;
+
+import io.jsonwebtoken.*;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Component;
+
+import javax.crypto.SecretKey;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Function;
+
+@Component
+public class JwtUtil {
+    
+    @Value("${app.jwt.secret}")
+    private String jwtSecret;
+    
+    @Value("${app.jwt.expiration}")
+    private int jwtExpirationMs;
+    
+    private SecretKey getSigningKey() {
+        return Keys.hmacShaKeyFor(jwtSecret.getBytes());
+    }
+    
+    public String extractUsername(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
+    
+    public Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
+    
+    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+        final Claims claims = extractAllClaims(token);
+        return claimsResolver.apply(claims);
+    }
+    
+    private Claims extractAllClaims(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(getSigningKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+    }
+    
+    private Boolean isTokenExpired(String token) {
+        return extractExpiration(token).before(new Date());
+    }
+    
+    public String generateToken(UserDetails userDetails) {
+        Map<String, Object> claims = new HashMap<>();
+        return createToken(claims, userDetails.getUsername());
+    }
+    
+    private String createToken(Map<String, Object> claims, String subject) {
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(subject)
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(System.currentTimeMillis() + jwtExpirationMs))
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+    
+    public Boolean validateToken(String token, UserDetails userDetails) {
+        final String username = extractUsername(token);
+        return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\entity\Combo.java ===
+
+package com.example.rapphim.rapphim.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "combos")
+public class Combo {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long comboID;
+    
+    @Column(name = "name_combo", nullable = false)
+    private String nameCombo;
+    
+    @Column(nullable = false)
+    private Double price;
+    
+    @Column(length = 1000)
+    private String description;
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\entity\Movie.java ===
+
+package com.example.rapphim.rapphim.entity;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "movies")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+public class Movie {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long movieID;
+    
+    @Column(nullable = false)
+    private String title;
+    
+    @Column(length = 1000)
+    private String genre;
+    
+    @Column(nullable = false)
+    private Integer duration;
+    
+    @Column(length = 2000)
+    private String description;
+    
+    @Column(name = "release_date")
+    private LocalDate releaseDate;
+    
+    @Column(name = "total_ticket_love")
+    private Integer totalTicketLove = 0;
+    
+    @Column(name = "image_url", length = 1000)
+    private String imageUrl;
+    
+    @Column(name = "trailer_url", length = 1000)
+    private String trailerUrl;
+    
+    // Relationships
+    @OneToMany(mappedBy = "movie", cascade = CascadeType.ALL)
+    @JsonIgnoreProperties("movie")
+    private List<Showtime> showtimes;
+    
+    @OneToMany(mappedBy = "movie", cascade = CascadeType.ALL)
+    @JsonIgnoreProperties("movie")
+    private List<Review> reviews;
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\entity\OTP.java ===
+
+package com.example.rapphim.rapphim.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "otps")
+public class OTP {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long otpID;
+    
+    @Column(nullable = false)
+    private String email;
+    
+    @Column(nullable = false)
+    private String otpCode;
+    
+    @Column(nullable = false)
+    private LocalDateTime createdAt;
+    
+    @Column(nullable = false)
+    private LocalDateTime expiresAt;
+    
+    @Column(nullable = false)
+    private Boolean verified = false;
+    
+    // Constructor để tạo OTP mới
+    public OTP(String email, String otpCode, LocalDateTime expiresAt) {
+        this.email = email;
+        this.otpCode = otpCode;
+        this.createdAt = LocalDateTime.now();
+        this.expiresAt = expiresAt;
+        this.verified = false;
+    }
+    
+    public boolean isExpired() {
+        return LocalDateTime.now().isAfter(this.expiresAt);
+    }
+}
+
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\entity\Payment.java ===
+
+package com.example.rapphim.rapphim.entity;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "payments")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+public class Payment {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long paymentID;
+    
+    @Column(nullable = false)
+    private String method; // MOMO, CASH, CARD
+    
+    @Column(nullable = false)
+    private Double amount;
+    
+    @Enumerated(EnumType.STRING)
+    private Status status = Status.PENDING;
+    
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
+    
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+    
+    // MoMo specific fields
+    @Column(name = "momo_trans_id")
+    private String momoTransId; // Transaction ID từ MoMo
+    
+    @Column(name = "order_id", unique = true)
+    private String orderId; // Order ID tự tạo
+    
+    @Column(name = "request_id")
+    private String requestId; // Request ID gửi lên MoMo
+    
+    @Column(name = "payment_url", length = 1000)
+    private String paymentUrl; // URL thanh toán MoMo
+    
+    @Column(name = "result_code")
+    private Integer resultCode; // Kết quả từ MoMo (0 = success)
+    
+    @Column(name = "message", length = 500)
+    private String message; // Message từ MoMo
+    
+    @ManyToOne
+    @JoinColumn(name = "customer_id", nullable = false)
+    @JsonIgnoreProperties({"tickets", "reviews", "payments", "password"})
+    private User customer;
+    
+    @ManyToMany
+    @JoinTable(
+        name = "payment_tickets",
+        joinColumns = @JoinColumn(name = "payment_id"),
+        inverseJoinColumns = @JoinColumn(name = "ticket_id")
+    )
+    @JsonIgnoreProperties({"customer", "showtime", "room", "seat"})
+    private List<Ticket> tickets; // Hỗ trợ nhiều vé trong 1 payment
+    
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+    
+    public enum Status {
+        PENDING,    // Đang chờ thanh toán
+        COMPLETED,  // Đã thanh toán thành công
+        FAILED,     // Thanh toán thất bại
+        CANCELLED,  // Đã hủy
+        EXPIRED     // Hết hạn
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\entity\Promotion.java ===
+
+package com.example.rapphim.rapphim.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "promotions")
+public class Promotion {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long promoID;
+    
+    @Column(nullable = false)
+    private String code;
+    
+    @Column(nullable = false)
+    private Double discount;
+    
+    @Column(name = "start_date")
+    private LocalDate startDate;
+    
+    @Column(name = "end_date")
+    private LocalDate endDate;
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\entity\Review.java ===
+
+package com.example.rapphim.rapphim.entity;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "reviews")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+public class Review {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long reviewID;
+    
+    @Column(nullable = false)
+    private Integer star;
+    
+    @Column(length = 2000)
+    private String comment;
+    
+    @ManyToOne
+    @JoinColumn(name = "customer_id", nullable = false)
+    @JsonIgnoreProperties({"tickets", "reviews", "payments", "password"})
+    private User customer;
+    
+    @ManyToOne
+    @JoinColumn(name = "movie_id", nullable = false)
+    @JsonIgnoreProperties({"showtimes", "reviews"})
+    private Movie movie;
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\entity\Room.java ===
+
+package com.example.rapphim.rapphim.entity;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "rooms")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+public class Room {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long roomID;
+
+    @Column(name = "room_name", nullable = false)
+    private String roomName;
+
+    @Column(name = "total_seats", nullable = false)
+    private Integer totalSeats = 0;  // Tự động tính từ số ghế
+
+    // ===== THÊM CÁC TRƯỜNG MỚI =====
+
+    @Column(name = "total_rows")
+    private Integer totalRows;  // Tổng số hàng (VD: 10)
+
+    @Column(name = "total_columns")
+    private Integer totalColumns;  // Tổng số cột (VD: 12)
+
+    @Column(name = "row_labels", length = 100)
+    private String rowLabels;  // Nhãn các hàng (VD: "ABCDEFGHIJ")
+
+    @Column(name = "layout_json", columnDefinition = "TEXT")
+    private String layoutJson;  // Lưu toàn bộ layout dạng JSON
+
+    @Column(length = 1000)
+    private String layout;  // Mô tả layout (giữ lại để tương thích)
+
+    @Column(name = "room_type", length = 50)
+    private String roomType;  // "STANDARD", "VIP", "IMAX", "4DX"
+
+    // Relationships
+    @OneToMany(mappedBy = "room", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnoreProperties("room")
+    private List<Seat> seats;
+
+    @OneToMany(mappedBy = "room", cascade = CascadeType.ALL)
+    @JsonIgnoreProperties("room")
+    private List<Showtime> showtimes;
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\entity\Seat.java ===
+
+package com.example.rapphim.rapphim.entity;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "seats",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"room_id", "seat_number"}))
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+public class Seat {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long seatID;
+
+    @Column(name = "seat_number", nullable = false)
+    private String seatNumber;  // VD: "A1", "B5", "C10"
+
+    @Column(name = "row_label", length = 10)
+    private String rowLabel;  // VD: "A", "B", "C"
+
+    @Column(name = "column_number")
+    private Integer columnNumber;  // VD: 1, 2, 3, ..., 12
+
+    @Column(name = "seat_type", length = 50)
+    private String seatType = "STANDARD";  // "STANDARD", "VIP", "COUPLE", "PREMIUM"
+
+    @Column(name = "price_multiplier")
+    private Double priceMultiplier = 1.0;  // Hệ số giá (VIP = 1.5, COUPLE = 2.0, STANDARD = 1.0)
+
+    @Enumerated(EnumType.STRING)
+    private Status status = Status.AVAILABLE;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "room_id", nullable = false)
+    @JsonIgnoreProperties({"seats", "showtimes"})
+    private Room room;
+
+    public enum Status {
+        AVAILABLE,      // Có thể đặt
+        BOOKED,         // Đã được đặt (tạm thời trong suất chiếu)
+        MAINTENANCE,    // Đang bảo trì
+        DISABLED        // Vĩnh viễn không sử dụng
+    }
+
+    // Helper method để kiểm tra loại ghế
+    public boolean isCoupleSeat() {
+        return "COUPLE".equals(this.seatType);
+    }
+
+    public boolean isPremiumSeat() {
+        return "PREMIUM".equals(this.seatType);
+    }
+
+    public boolean isVipSeat() {
+        return "VIP".equals(this.seatType);
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\entity\Showtime.java ===
+
+package com.example.rapphim.rapphim.entity;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "showtimes")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+public class Showtime {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long showtimeID;
+    
+    @Column(name = "start_time", nullable = false)
+    private LocalTime startTime;
+    
+    @Column(name = "end_time", nullable = false) 
+    private LocalTime endTime;
+    
+    @Column(name = "showtime_date", nullable = false)
+    private LocalDate showtimeDate;
+    
+    @Column(length = 500)
+    private String description;
+    
+    @Column(name = "base_price", nullable = false)
+    private Double basePrice = 100000.0;  // Giá vé cơ bản cho suất chiếu này
+    
+    @ManyToOne
+    @JoinColumn(name = "movie_id", nullable = false)
+    @JsonIgnoreProperties({"showtimes", "reviews"})
+    private Movie movie;
+    
+    @ManyToOne
+    @JoinColumn(name = "room_id", nullable = false)
+    @JsonIgnoreProperties({"showtimes", "seats"})
+    private Room room;
+    
+    // Relationships
+    @OneToMany(mappedBy = "showtime", cascade = CascadeType.ALL)
+    @JsonIgnoreProperties("showtime")
+    private List<Ticket> tickets;
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\entity\Ticket.java ===
+
+package com.example.rapphim.rapphim.entity;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "tickets")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+public class Ticket {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long ticketID;
+    
+    @Column(nullable = false)
+    private Double price;
+    
+    @Enumerated(EnumType.STRING)
+    private Status status = Status.ACTIVE;
+    
+    @Column(name = "booking_date")
+    private LocalDate bookingDate;
+    
+    @Column(name = "show_time")
+    private String showTime;
+    
+    @ManyToOne
+    @JoinColumn(name = "customer_id", nullable = false)
+    @JsonIgnoreProperties({"tickets", "reviews", "payments", "password"})
+    private User customer;
+    
+    @ManyToOne
+    @JoinColumn(name = "room_id", nullable = false)
+    @JsonIgnoreProperties({"seats", "showtimes"})
+    private Room room;
+    
+    @ManyToOne
+    @JoinColumn(name = "showtime_id", nullable = false)
+    @JsonIgnoreProperties({"tickets", "movie", "room"})
+    private Showtime showtime;
+    
+    @ManyToOne
+    @JoinColumn(name = "seat_id", nullable = false)
+    @JsonIgnoreProperties("room")
+    private Seat seat;
+    
+    @ManyToMany
+    @JoinTable(
+        name = "ticket_combos",
+        joinColumns = @JoinColumn(name = "ticket_id"),
+        inverseJoinColumns = @JoinColumn(name = "combo_id")
+    )
+    private List<Combo> combos;
+    
+    public enum Status {
+        ACTIVE, CANCELLED, USED
+    }
+}
+
+================================================================================
+
+=== D:\TieuLuan\Do_An\BE\TieuLuanCN\rapphim\src\main\java\com\example\rapphim\rapphim\entity\User.java ===
+
+package com.example.rapphim.rapphim.entity;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import java.util.Collection;
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "users")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+public class User implements UserDetails {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long userID;
+    
+    @Column(unique = true, nullable = false)
+    private String name;
+    
+    @Column(unique = true, nullable = false)
+    private String email;
+    
+    @Column(nullable = false)
+    @JsonIgnore
+    private String password;
+    
+    @Enumerated(EnumType.STRING)
+    private Role role = Role.CUSTOMER;
+    
+    // Relationships
+    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL)
+    @JsonIgnoreProperties("customer")
+    private List<Ticket> tickets;
+    
+    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL)
+    @JsonIgnoreProperties("customer")
+    private List<Review> reviews;
+    
+    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL)
+    @JsonIgnoreProperties("customer")
+    private List<Payment> payments;
+    
+    // UserDetails implementation
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
+    }
+    
+    @Override
+    public String getUsername() {
+        return email;
+    }
+    
+    @Override
+    public boolean isAccountNonExpired() {
+        return true;
+    }
+    
+    @Override
+    public boolean isAccountNonLocked() {
+        return true;
+    }
+    
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
+    
+    @Override
+    public boolean isEnabled() {
+        return true;
+    }
+    
+    public enum Role {
+        ADMIN, STAFF, CUSTOMER, GUEST
+    }
+}
+
+================================================================================
+

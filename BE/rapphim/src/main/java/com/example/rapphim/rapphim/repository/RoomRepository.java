@@ -1,0 +1,12 @@
+package com.example.rapphim.rapphim.repository;
+
+import com.example.rapphim.rapphim.entity.Room;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface RoomRepository extends JpaRepository<Room, Long> {
+    List<Room> findByRoomType(String roomType);
+}
