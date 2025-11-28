@@ -128,7 +128,7 @@ public class TicketService {
             Ticket ticket = new Ticket(
                 null, // ticketID will be generated
                 finalPrice,  // Giá tự động tính (vé + combo)
-                Ticket.Status.ACTIVE,
+                Ticket.Status.PENDING,  // Chờ thanh toán
                 LocalDate.now(),
                 showtime.getStartTime().toString(),
                 currentUser,

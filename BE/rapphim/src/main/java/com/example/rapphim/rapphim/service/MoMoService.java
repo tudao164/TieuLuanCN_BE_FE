@@ -73,8 +73,8 @@ public class MoMoService {
                 throw new RuntimeException("Ticket does not belong to current user");
             }
             
-            // Kiểm tra vé chưa được thanh toán
-            if (ticket.getStatus() != Ticket.Status.ACTIVE) {
+            // Kiểm tra vé đang chờ thanh toán
+            if (ticket.getStatus() != Ticket.Status.PENDING) {
                 throw new RuntimeException("Ticket " + ticketId + " is not available for payment");
             }
             
@@ -195,9 +195,9 @@ public class MoMoService {
             // Thanh toán thành công
             payment.setStatus(Payment.Status.COMPLETED);
 
-            // Cập nhật trạng thái vé
+            // Cập nhật trạng thái vé thành PAID
             for (Ticket ticket : payment.getTickets()) {
-                ticket.setStatus(Ticket. Status.ACTIVE);
+                ticket.setStatus(Ticket.Status.PAID);
                 ticketRepository.save(ticket);
             }
         } else {
@@ -255,9 +255,9 @@ public class MoMoService {
             // Thanh toán thành công
             payment.setStatus(Payment.Status.COMPLETED);
             
-            // Cập nhật trạng thái vé
+            // Cập nhật trạng thái vé thành PAID
             for (Ticket ticket : payment.getTickets()) {
-                ticket.setStatus(Ticket.Status.ACTIVE);
+                ticket.setStatus(Ticket.Status.PAID);
                 ticketRepository.save(ticket);
             }
         } else {

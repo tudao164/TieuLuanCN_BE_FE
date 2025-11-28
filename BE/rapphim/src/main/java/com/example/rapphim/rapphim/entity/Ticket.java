@@ -24,7 +24,7 @@ public class Ticket {
     private Double price;
     
     @Enumerated(EnumType.STRING)
-    private Status status = Status.ACTIVE;
+    private Status status = Status.PENDING;
     
     @Column(name = "booking_date")
     private LocalDate bookingDate;
@@ -61,6 +61,9 @@ public class Ticket {
     private List<Combo> combos;
     
     public enum Status {
-        ACTIVE, CANCELLED, USED
+        PENDING,    // Chờ thanh toán (mới đặt)
+        PAID,       // Đã thanh toán thành công
+        CANCELLED,  // Đã hủy
+        USED        // Đã sử dụng (check-in)
     }
 }

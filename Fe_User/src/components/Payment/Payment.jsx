@@ -184,17 +184,17 @@ const Payment = ({ user, setUser }) => {
                 // ✅ MỞ MOMO Ở TAB MỚI (không redirect tab hiện tại)
                 window.open(response.data.paymentUrl, '_blank');
 
-                // ✅ CHUYỂN ĐẾN TRANG KẾT QUẢ NGAY (sẽ tự động check sau 10s)
+                // ✅ CHUYỂN ĐẾN TRANG KẾT QUẢ NGAY (countdown 60s để xác nhận)
                 navigate('/payment-result', {
                     state: {
                         orderId: response.data.orderId,
                         paymentId: response.data.paymentId,
                         amount: response.data.amount,
-                        autoCheck: true // Flag để PaymentResult biết cần auto check
+                        autoCheck: true // Flag để PaymentResult biết cần đếm ngược
                     }
                 });
 
-                alert("✅ Đã mở cửa sổ thanh toán MoMo!\n\n🔄 Hệ thống sẽ tự động kiểm tra trạng thái thanh toán sau 10 giây.\n\nVui lòng hoàn tất thanh toán trong cửa sổ mới.");
+                alert("✅ Đã mở cửa sổ thanh toán MoMo!\n\n⏰ Bạn có 60 giây để hoàn tất thanh toán và xác nhận.\n\n⚠️ Nếu hết thời gian, vé sẽ bị hủy và ghế sẽ được trả lại.");
 
             } else {
                 throw new Error(response.data.message || 'Không thể tạo thanh toán');

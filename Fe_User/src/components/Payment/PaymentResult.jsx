@@ -27,7 +27,7 @@ const PaymentResult = ({ user, setUser }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [countdown, setCountdown] = useState(5);
-    const [checkCountdown, setCheckCountdown] = useState(10); // Đếm ngược 10s
+    const [checkCountdown, setCheckCountdown] = useState(60); // Đếm ngược 60s
 
     // Lấy orderId và autoCheck từ location state
     const orderId = location.state?.orderId;
@@ -43,21 +43,135 @@ const PaymentResult = ({ user, setUser }) => {
         }
     }, []);
 
-    // ✅ AUTO CHECK: Đếm ngược 10s rồi GỌI /momo-callback
+    // ✅ AUTO CHECK: Đếm ngược 60s, nếu hết thời gian → thanh toán thất bại
     useEffect(() => {
-        if (autoCheck && checkCountdown > 0) {
+        if (autoCheck && checkCountdown > 0 && paymentStatus === "PROCESSING") {
             const timer = setTimeout(() => {
                 setCheckCountdown(checkCountdown - 1);
             }, 1000);
 
             return () => clearTimeout(timer);
-        } else if (autoCheck && checkCountdown === 0) {
-            // ✅ Hết 10s → TỰ ĐỘNG GỌI /momo-callback (giả lập MoMo callback)
-            simulateMoMoCallback();
+        } else if (autoCheck && checkCountdown === 0 && paymentStatus === "PROCESSING") {
+            // ✅ Hết 60s → Thanh toán THẤT BẠI, trả ghế
+            handlePaymentTimeout();
         }
-    }, [autoCheck, checkCountdown]);
+    }, [autoCheck, checkCountdown, paymentStatus]);
 
-    // ✅ HÀM GIẢ LẬP MOMO CALLBACK (TEST MODE)
+    // ✅ XỬ LÝ KHI HẾT 60S - THANH TOÁN THẤT BẠI
+    const handlePaymentTimeout = async () => {
+        try {
+            console.log('⏰ Hết thời gian 60s - Hủy thanh toán...');
+
+            const token = localStorage.getItem('token');
+
+            if (!token) {
+                setError("Phiên đăng nhập đã hết hạn");
+                setPaymentStatus("FAILED");
+                setLoading(false);
+                return;
+            }
+
+            // ✅ GỌI CALLBACK VỚI resultCode = 1 (THẤT BẠI)
+            const momoCallbackPayload = {
+                partnerCode: "MOMO",
+                orderId: orderId,
+                requestId: `REQ_${Date.now()}`,
+                amount: amount,
+                orderInfo: `Thanh toan ve xem phim - Order ${orderId}`,
+                orderType: "momo_wallet",
+                transId: Math.floor(Math.random() * 1000000000),
+                resultCode: 1, // ❌ 1 = THẤT BẠI (timeout)
+                message: "Payment timeout - User did not confirm within 60 seconds",
+                payType: "qr",
+                responseTime: Date.now(),
+                extraData: "",
+                signature: "fake_signature_for_testing"
+            };
+
+            console.log('📤 Gửi callback timeout:', momoCallbackPayload);
+
+            await axios.post(
+                'http://localhost:8080/api/payments/test-callback',
+                momoCallbackPayload,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            // Cập nhật UI
+            setPaymentStatus("FAILED");
+            setError("Hết thời gian thanh toán. Vé đã bị hủy và ghế đã được trả lại.");
+            setLoading(false);
+
+        } catch (error) {
+            console.error("❌ Lỗi khi xử lý timeout:", error);
+            setError("Không thể hủy thanh toán. Vui lòng liên hệ hỗ trợ.");
+            setPaymentStatus("FAILED");
+            setLoading(false);
+        }
+    };
+
+    // ✅ XỬ LÝ KHI USER XÁC NHẬN THANH TOÁN
+    const handleConfirmPayment = async () => {
+        try {
+            console.log('✅ User xác nhận thanh toán...');
+
+            const token = localStorage.getItem('token');
+
+            if (!token) {
+                alert("Phiên đăng nhập đã hết hạn");
+                navigate('/login');
+                return;
+            }
+
+            setLoading(true);
+
+            // ✅ GỌI CALLBACK VỚI resultCode = 0 (THÀNH CÔNG)
+            const momoCallbackPayload = {
+                partnerCode: "MOMO",
+                orderId: orderId,
+                requestId: `REQ_${Date.now()}`,
+                amount: amount,
+                orderInfo: `Thanh toan ve xem phim - Order ${orderId}`,
+                orderType: "momo_wallet",
+                transId: Math.floor(Math.random() * 1000000000),
+                resultCode: 0, // ✅ 0 = THÀNH CÔNG
+                message: "Successful.",
+                payType: "qr",
+                responseTime: Date.now(),
+                extraData: "",
+                signature: "fake_signature_for_testing"
+            };
+
+            console.log('📤 Gửi callback xác nhận:', momoCallbackPayload);
+
+            await axios.post(
+                'http://localhost:8080/api/payments/test-callback',
+                momoCallbackPayload,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            // Check status sau khi callback
+            setTimeout(() => {
+                checkPaymentStatus();
+            }, 1000);
+
+        } catch (error) {
+            console.error("❌ Lỗi khi xác nhận thanh toán:", error);
+            alert("Không thể xác nhận thanh toán. Vui lòng thử lại.");
+            setLoading(false);
+        }
+    };
+
+    // ✅ HÀM GIẢ LẬP MOMO CALLBACK (TEST MODE) - GIỮ LẠI ĐỂ TEST
     const simulateMoMoCallback = async () => {
         try {
             console.log('🧪 [TEST MODE] Tự động gọi MoMo callback sau 10s...');
@@ -247,57 +361,54 @@ const PaymentResult = ({ user, setUser }) => {
                             </div>
                         </div>
 
-                        <h2 className="text-3xl font-bold text-white mb-4">🧪 Chế Độ Test</h2>
+                        <h2 className="text-3xl font-bold text-white mb-4">⏳ Xác Nhận Thanh Toán</h2>
 
-                        <div className="bg-yellow-500/20 border border-yellow-400/50 rounded-lg p-4 mb-6">
+                        <div className="bg-yellow-500/20 border border-yellow-400/50 rounded-lg p-6 mb-6">
                             <p className="text-yellow-300 text-lg font-semibold mb-2">
-                                Đang giả lập thanh toán MoMo...
+                                Vui lòng xác nhận thanh toán trong:
                             </p>
-                            <p className="text-white/70 text-sm mb-2">
-                                Hệ thống sẽ tự động xác nhận thanh toán sau
-                            </p>
-                            <div className="text-yellow-300 font-bold text-5xl mb-2">
+                            <div className="text-yellow-300 font-bold text-6xl mb-2">
                                 {checkCountdown}s
                             </div>
-                            <p className="text-white/50 text-xs">
-                                (Không cần thanh toán thật - Chỉ để test)
+                            <p className="text-white/70 text-sm">
+                                Nếu không xác nhận, vé sẽ bị hủy và ghế sẽ được trả lại
                             </p>
                         </div>
 
-                        <div className="space-y-3 text-white/60 text-sm">
-                            <div className="flex items-center justify-center gap-2">
-                                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                                <span>Cửa sổ MoMo đã được mở (có thể đóng)</span>
-                            </div>
+                        <div className="space-y-3 text-white/60 text-sm mb-6">
                             <div className="flex items-center justify-center gap-2">
                                 <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                                <span>Đang chờ tự động xác nhận... </span>
+                                <span>Cửa sổ MoMo đã được mở</span>
                             </div>
                             <div className="flex items-center justify-center gap-2">
                                 <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
-                                <span>App sẽ gọi API thay MoMo</span>
+                                <span>Hoàn tất thanh toán trên app MoMo</span>
+                            </div>
+                            <div className="flex items-center justify-center gap-2">
+                                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                                <span>Quay lại đây và nhấn "Xác Nhận Thanh Toán"</span>
                             </div>
                         </div>
 
                         <div className="mt-8 flex gap-3">
                             <button
-                                onClick={handleManualCheck}
-                                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:from-blue-600 hover:to-indigo-700 font-semibold flex items-center justify-center gap-2"
+                                onClick={handleConfirmPayment}
+                                className="flex-1 px-6 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 font-bold text-lg flex items-center justify-center gap-2"
                             >
-                                <RefreshCw className="w-5 h-5" />
-                                Xác Nhận Ngay
+                                <CheckCircle className="w-5 h-5" />
+                                ✅ Xác Nhận Thanh Toán
                             </button>
                             <button
                                 onClick={() => navigate('/')}
                                 className="px-6 py-3 bg-white/10 border border-white/20 text-white rounded-lg hover:bg-white/20 font-semibold"
                             >
-                                Hủy
+                                Hủy & Về Trang Chủ
                             </button>
                         </div>
 
-                        <div className="mt-6 p-3 bg-green-500/10 border border-green-400/30 rounded-lg">
-                            <p className="text-green-300 text-xs">
-                                💡 Tip: Click "Xác Nhận Ngay" để bỏ qua đếm ngược
+                        <div className="mt-6 p-4 bg-red-500/10 border border-red-400/30 rounded-lg">
+                            <p className="text-red-300 text-sm">
+                                ⚠️ Lưu ý: Nếu hết thời gian mà chưa xác nhận, vé sẽ tự động bị hủy
                             </p>
                         </div>
                     </div>
@@ -342,7 +453,7 @@ const PaymentResult = ({ user, setUser }) => {
                                     🎉 Thanh Toán Thành Công!
                                 </h1>
                                 <p className="text-white/80 text-lg mb-4">
-                                    Vé của bạn đã được đặt thành công (Test mode)
+                                    Vé của bạn đã được thanh toán và xác nhận
                                 </p>
                                 <div className="inline-block bg-white/10 px-6 py-2 rounded-full">
                                     <span className="text-white/60 text-sm">Mã đơn hàng: </span>
