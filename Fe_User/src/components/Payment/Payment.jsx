@@ -106,20 +106,19 @@ const Payment = ({ user, setUser }) => {
         setPromotionError("");
     };
 
-    // Tính tổng tiền ghế
+    // Tính tổng tiền vé (đã bao gồm combo từ backend)
     const calculateSeatsTotal = () => {
         return tickets.reduce((sum, ticket) => sum + (ticket.price || 0), 0);
     };
 
-    // Tính tổng tiền combo
+    // ✅ KHÔNG CẦN tính combo riêng nữa vì ticket.price đã bao gồm combo
     const calculateCombosTotal = () => {
-        if (!selectedCombos || selectedCombos.length === 0) return 0;
-        return selectedCombos.reduce((sum, combo) => sum + (combo.price * combo.quantity), 0);
+        return 0; // Combo đã được tính vào ticket.price từ backend
     };
 
-    // Tính tổng trước giảm giá
+    // Tính tổng trước giảm giá (chỉ cần lấy ticket.price)
     const calculateSubtotal = () => {
-        return calculateSeatsTotal() + calculateCombosTotal();
+        return calculateSeatsTotal(); // Đã bao gồm cả vé + combo
     };
 
     // Tính số tiền giảm
@@ -384,55 +383,8 @@ const Payment = ({ user, setUser }) => {
                                 </div>
                             </div>
 
-                            {/* Promotion Code */}
-                            <div className="bg-white/10 backdrop-blur-md rounded-xl shadow-2xl p-6 border border-white/20">
-                                <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                                    <Tag className="w-6 h-6" />
-                                    Mã Khuyến Mãi
-                                </h2>
-
-                                {!promotionApplied ? (
-                                    <div className="flex gap-3">
-                                        <input
-                                            type="text"
-                                            value={promotionCode}
-                                            onChange={(e) => setPromotionCode(e.target.value.toUpperCase())}
-                                            placeholder="Nhập mã khuyến mãi"
-                                            className="flex-1 px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-yellow-400"
-                                        />
-                                        <button
-                                            onClick={validatePromotionCode}
-                                            disabled={validatingPromo || !promotionCode.trim()}
-                                            className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-lg hover:from-yellow-600 hover:to-orange-600 disabled:opacity-50 font-semibold"
-                                        >
-                                            {validatingPromo ? "Kiểm tra..." : "Áp dụng"}
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center justify-between p-4 bg-green-500/20 border border-green-400 rounded-lg">
-                                        <div className="flex items-center gap-3">
-                                            <CheckCircle className="w-6 h-6 text-green-400" />
-                                            <div>
-                                                <div className="text-white font-semibold">{promotionApplied.code}</div>
-                                                <div className="text-green-300 text-sm">Giảm {promotionApplied.discount}%</div>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={removePromotion}
-                                            className="text-red-400 hover:text-red-300"
-                                        >
-                                            <XCircle className="w-6 h-6" />
-                                        </button>
-                                    </div>
-                                )}
-
-                                {promotionError && (
-                                    <div className="mt-3 flex items-center gap-2 text-red-400 text-sm">
-                                        <AlertCircle className="w-4 h-4" />
-                                        {promotionError}
-                                    </div>
-                                )}
-                            </div>
+                            {/* Promotion Code - Ẩn đi vì đã áp dụng ở BookTicket */}
+                            {/* Giá vé từ backend đã bao gồm discount rồi */}
 
                             {/* Payment Method */}
                             <div className="bg-white/10 backdrop-blur-md rounded-xl shadow-2xl p-6 border border-white/20">
@@ -497,10 +449,11 @@ const Payment = ({ user, setUser }) => {
                                             <span>• Vé xem phim ({tickets.length})</span>
                                             <span>{formatCurrency(calculateSeatsTotal())}</span>
                                         </div>
+                                        {/* ✅ Combo đã được tính vào giá vé, chỉ hiển thị thông tin */}
                                         {selectedCombos && selectedCombos.length > 0 && (
-                                            <div className="flex justify-between mt-1">
-                                                <span>• Combo ({selectedCombos.reduce((sum, c) => sum + c.quantity, 0)})</span>
-                                                <span>{formatCurrency(calculateCombosTotal())}</span>
+                                            <div className="flex justify-between mt-1 text-white/40 italic">
+                                                <span>• Bao gồm {selectedCombos.reduce((sum, c) => sum + c.quantity, 0)} combo</span>
+                                                <span>Đã tính</span>
                                             </div>
                                         )}
                                     </div>

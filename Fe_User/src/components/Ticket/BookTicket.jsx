@@ -20,6 +20,10 @@ const BookTicket = ({ user, setUser }) => {
     const [combos, setCombos] = useState([]);
     const [selectedCombos, setSelectedCombos] = useState([]);
     const [comboLoading, setComboLoading] = useState(false);
+    const [promotionCode, setPromotionCode] = useState("");
+    const [promotionApplied, setPromotionApplied] = useState(null);
+    const [promotionError, setPromotionError] = useState("");
+    const [validatingPromo, setValidatingPromo] = useState(false);
 
 
     const showtimeId = location.state?.showtimeId;
@@ -259,6 +263,56 @@ const BookTicket = ({ user, setUser }) => {
         );
     };
 
+    // Validate mã khuyến mãi
+    const validatePromotionCode = async () => {
+        if (!promotionCode.trim()) {
+            setPromotionError("Vui lòng nhập mã khuyến mãi");
+            return;
+        }
+
+        setValidatingPromo(true);
+        setPromotionError("");
+
+        try {
+            const token = localStorage.getItem('token');
+            const response = await axios.post(
+                `http://localhost:8080/api/promotions/validate?code=${promotionCode}`,
+                {},
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            if (response.data.valid) {
+                setPromotionApplied({
+                    code: response.data.code,
+                    discount: response.data.discount
+                });
+                setPromotionError("");
+                alert(`✅ Áp dụng mã khuyến mãi thành công! Giảm ${response.data.discount}%`);
+            } else {
+                setPromotionError("Mã khuyến mãi không hợp lệ hoặc đã hết hạn");
+                setPromotionApplied(null);
+            }
+        } catch (error) {
+            console.error("Lỗi validate promotion:", error);
+            setPromotionError(error.response?.data?.message || "Mã khuyến mãi không hợp lệ");
+            setPromotionApplied(null);
+        } finally {
+            setValidatingPromo(false);
+        }
+    };
+
+    // Xóa mã khuyến mãi
+    const removePromotion = () => {
+        setPromotionCode("");
+        setPromotionApplied(null);
+        setPromotionError("");
+    };
+
     // ✅ FIX: Chỉ book vé, KHÔNG gửi combo trong request
     const handleBookTickets = async () => {
         if (selectedSeats.length === 0) {
@@ -278,13 +332,24 @@ const BookTicket = ({ user, setUser }) => {
 
             const seatIds = selectedSeats.map(seat => seat.seatID);
 
-            // ✅ Chỉ gửi showtimeId và seatIds - KHÔNG gửi combo
+            // ✅ Gửi showtimeId, seatIds VÀ comboIds (nếu có)
             const bookingData = {
                 showtimeId: parseInt(showtimeId),
                 seatIds: seatIds
             };
 
-            console.log('📤 Gửi dữ liệu booking (chỉ vé):', bookingData);
+            // Thêm comboIds nếu có combo được chọn
+            if (selectedCombos && selectedCombos.length > 0) {
+                // ✅ Sử dụng 'id' thay vì 'comboID' vì đã map ở line 87
+                bookingData.comboIds = selectedCombos.map(combo => combo.id);
+            }
+
+            // ✅ Thêm promotionCode nếu có mã giảm giá được áp dụng
+            if (promotionApplied && promotionApplied.code) {
+                bookingData.promotionCode = promotionApplied.code;
+            }
+
+            console.log('📤 Gửi dữ liệu booking (vé + combo + promotion):', bookingData);
 
             const response = await axios.post('http://localhost:8080/api/tickets/book',
                 bookingData,
@@ -299,25 +364,20 @@ const BookTicket = ({ user, setUser }) => {
             const bookingResult = response.data;
             console.log('✅ Booking response:', bookingResult);
 
-            // ✅ Tính tổng tiền vé (từ backend)
-            const ticketsTotal = bookingResult.tickets.reduce((sum, ticket) => sum + ticket.price, 0);
+            // ✅ Tổng tiền đã được backend tính đầy đủ (vé + combo)
+            const totalAmount = bookingResult.totalAmount || bookingResult.tickets.reduce((sum, ticket) => sum + ticket.price, 0);
 
-            // ✅ Tính tổng tiền combo (frontend)
-            const combosTotal = selectedCombos.reduce((sum, combo) => sum + (combo.price * combo.quantity), 0);
+            console.log('💰 Tổng tiền (từ backend):', totalAmount);
+            localStorage.setItem("amount", totalAmount);
 
-            // ✅ Tổng tạm tính (chưa có khuyến mãi)
-
-            const subtotal = ticketsTotal + combosTotal;
-            console.log(subtotal);
-            localStorage.setItem("amount", subtotal);
             // ✅ Navigate sang trang Payment với đầy đủ thông tin
             navigate('/payment', {
                 state: {
                     tickets: bookingResult.tickets,
-                    amount: subtotal, // Tổng tạm tính
+                    totalAmount: totalAmount, // Tổng đã bao gồm vé + combo từ backend
                     showtime: showtime,
                     selectedSeats: selectedSeats,
-                    selectedCombos: selectedCombos, // ✅ Truyền combo sang Payment
+                    selectedCombos: selectedCombos, // Chỉ để hiển thị UI
                     bookingResult: bookingResult,
                     movie: movie
                 }
@@ -347,7 +407,18 @@ const BookTicket = ({ user, setUser }) => {
     };
 
     const calculateTotal = () => {
-        return calculateSeatsTotal() + calculateCombosTotal();
+        const subtotal = calculateSeatsTotal() + calculateCombosTotal();
+        if (promotionApplied) {
+            const discount = (subtotal * promotionApplied.discount) / 100;
+            return subtotal - discount;
+        }
+        return subtotal;
+    };
+
+    const calculateDiscount = () => {
+        if (!promotionApplied) return 0;
+        const subtotal = calculateSeatsTotal() + calculateCombosTotal();
+        return (subtotal * promotionApplied.discount) / 100;
     };
 
     const getAislePositions = (columns) => {
@@ -804,29 +875,89 @@ const BookTicket = ({ user, setUser }) => {
                         </div>
 
                         {(selectedSeats.length > 0 || selectedCombos.length > 0) && (
-                            <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 backdrop-blur-md rounded-xl shadow-2xl p-6 border border-green-500/30">
+                            <div className="space-y-6">
+                                {/* Mã khuyến mãi */}
+                                <div className="bg-white/10 backdrop-blur-md rounded-xl shadow-2xl p-6 border border-white/20">
+                                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                                        <span className="text-2xl">🎟️</span>
+                                        Mã Khuyến Mãi
+                                    </h3>
+
+                                    {!promotionApplied ? (
+                                        <div className="space-y-3">
+                                            <div className="flex gap-3">
+                                                <input
+                                                    type="text"
+                                                    value={promotionCode}
+                                                    onChange={(e) => setPromotionCode(e.target.value.toUpperCase())}
+                                                    placeholder="Nhập mã khuyến mãi"
+                                                    className="flex-1 px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-yellow-400"
+                                                />
+                                                <button
+                                                    onClick={validatePromotionCode}
+                                                    disabled={validatingPromo || !promotionCode.trim()}
+                                                    className="px-6 py-3 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                                                >
+                                                    {validatingPromo ? "Đang kiểm tra..." : "Áp dụng"}
+                                                </button>
+                                            </div>
+                                            {promotionError && (
+                                                <div className="text-red-400 text-sm flex items-center gap-2">
+                                                    <span>❌</span>
+                                                    {promotionError}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4">
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <div className="text-green-300 font-semibold flex items-center gap-2">
+                                                        <span>✅</span>
+                                                        Mã "{promotionApplied.code}" đã được áp dụng
+                                                    </div>
+                                                    <div className="text-white/80 text-sm mt-1">
+                                                        Giảm {promotionApplied.discount}% tổng hóa đơn
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={removePromotion}
+                                                    className="px-4 py-2 bg-red-500/20 border border-red-500/30 text-red-300 rounded-lg hover:bg-red-500/30 text-sm"
+                                                >
+                                                    Xóa
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Tổng tiền */}
+                                <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 backdrop-blur-md rounded-xl shadow-2xl p-6 border border-green-500/30">
                                 <div className="flex justify-between items-center">
-                                    <div>
-                                        <h3 className="text-xl font-bold text-white mb-2">Tạm Tính (Chưa giảm giá)</h3>
-                                        <div className="text-white/80 space-y-1">
+                                    <div className="flex-1">
+                                        <h3 className="text-xl font-bold text-white mb-2">Chi Tiết Thanh Toán</h3>
+                                        <div className="text-white/80 space-y-2">
                                             {selectedSeats.length > 0 && (
-                                                <div className="flex items-center gap-2">
-                                                    <span>Vé xem phim:</span>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span>Vé xem phim ({selectedSeats.length}):</span>
                                                     <span className="text-yellow-300 font-semibold">{formatCurrency(calculateSeatsTotal())}</span>
                                                 </div>
                                             )}
                                             {selectedCombos.length > 0 && (
-                                                <div className="flex items-center gap-2">
-                                                    <span>Combo bắp nước:</span>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span>Combo bắp nước ({selectedCombos.reduce((sum, c) => sum + c.quantity, 0)}):</span>
                                                     <span className="text-yellow-300 font-semibold">{formatCurrency(calculateCombosTotal())}</span>
                                                 </div>
                                             )}
-                                            <div className="flex items-center gap-2 text-lg font-bold border-t border-white/20 pt-2 mt-2">
-                                                <span>Tạm tính:</span>
+                                            {promotionApplied && (
+                                                <div className="flex items-center justify-between gap-2 text-green-300">
+                                                    <span>Giảm giá ({promotionApplied.discount}%):</span>
+                                                    <span className="font-semibold">-{formatCurrency(calculateDiscount())}</span>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center justify-between gap-2 text-lg font-bold border-t border-white/20 pt-2 mt-2">
+                                                <span>Tổng cộng:</span>
                                                 <span className="text-yellow-300 text-xl">{formatCurrency(calculateTotal())}</span>
-                                            </div>
-                                            <div className="text-green-300 text-sm mt-2">
-                                                ✅ Bạn có thể nhập mã giảm giá ở bước tiếp theo
                                             </div>
                                         </div>
                                     </div>
@@ -845,6 +976,7 @@ const BookTicket = ({ user, setUser }) => {
                                         )}
                                     </button>
                                 </div>
+                            </div>
                             </div>
                         )}
                     </div>
