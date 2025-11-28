@@ -9,6 +9,7 @@ import {
     FaEnvelope,
     FaMapMarkerAlt
 } from "react-icons/fa";
+import logo from '../../assets/Image/logo.png';
 
 const Footer = () => {
     return (
@@ -20,10 +21,9 @@ const Footer = () => {
                     <div className="lg:col-span-2">
                         <div className="flex items-center space-x-3 mb-4">
                             <img
-                                src="/cinestar-logo-white.png"
+                                src={logo}
                                 alt="Cinestar"
                                 className="h-12"
-                                onError={(e) => e.target.src = "https://via.placeholder.com/48/ffffff/000000?text=CINE"}
                             />
                             <span className="text-2xl font-bold tracking-wider">CINESTAR</span>
                         </div>

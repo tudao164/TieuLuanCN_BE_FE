@@ -101,4 +101,36 @@ public class AuthService {
         return new AuthResponse(jwt, savedUser.getUserID(), savedUser.getName(), 
                               savedUser.getEmail(), savedUser.getRole().name());
     }
+    
+    // Forgot Password - Gui OTP qua email
+    public String forgotPassword(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+        
+        // Generate va gui OTP
+        otpService.generateAndSendOTP(email);
+        
+        return "OTP has been sent to " + email + ". Please check your email to reset password.";
+    }
+    
+    // Reset Password - Verify OTP va cap nhat mat khau moi
+    public String resetPassword(String email, String otpCode, String newPassword) {
+        // Verify OTP
+        if (!otpService.verifyOTP(email, otpCode)) {
+            throw new RuntimeException("Invalid or expired OTP");
+        }
+        
+        // Tim user
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+        
+        // Cap nhat mat khau moi
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        
+        // Gui email thong bao
+        emailService.sendPasswordResetConfirmationEmail(user.getEmail(), user.getName());
+        
+        return "Password has been reset successfully. You can now login with your new password.";
+    }
 }

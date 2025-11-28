@@ -26,7 +26,7 @@ const ForgotPassword = () => {
                 setMessage("✅ OTP đã được gửi về email của bạn!");
                 localStorage.setItem("email", email);
                 setTimeout(() => {
-                    navigate("/verify-otp");
+                    navigate("/reset-password");
                 }, 1500);
             } else {
                 setMessage(data.message || "❌ Gửi OTP thất bại!");

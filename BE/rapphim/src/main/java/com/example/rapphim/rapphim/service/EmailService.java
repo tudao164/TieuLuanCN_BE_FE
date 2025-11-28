@@ -51,11 +51,35 @@ public class EmailService {
     }
     
     private String buildWelcomeEmailContent(String userName) {
-        return "Chào " + userName + ",\n\n" +
-               "Tài khoản của bạn đã được xác thực thành công!\n\n" +
-               "Bạn có thể bắt đầu đặt vé xem phim tại RapPhim Cinema.\n\n" +
-               "Trải nghiệm những bộ phim tuyệt vời cùng chúng tôi!\n\n" +
-               "Trân trọng,\n" +
+        return "Chao " + userName + ",\n\n" +
+               "Tai khoan cua ban da duoc xac thuc thanh cong!\n\n" +
+               "Ban co the bat dau dat ve xem phim tai RapPhim Cinema.\n\n" +
+               "Trai nghiem nhung bo phim tuyet voi cung chung toi!\n\n" +
+               "Tran trong,\n" +
+               "RapPhim Cinema Team";
+    }
+    
+    // Gui email xac nhan reset password thanh cong
+    public void sendPasswordResetConfirmationEmail(String toEmail, String userName) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom("daothanhtu2018@gmail.com");
+            message.setTo(toEmail);
+            message.setSubject("Mat khau da duoc thay doi - RapPhim Cinema");
+            message.setText(buildPasswordResetConfirmationContent(userName));
+            
+            mailSender.send(message);
+        } catch (Exception e) {
+            System.err.println("Failed to send password reset confirmation email: " + e.getMessage());
+        }
+    }
+    
+    private String buildPasswordResetConfirmationContent(String userName) {
+        return "Chao " + userName + ",\n\n" +
+               "Mat khau cua ban da duoc thay doi thanh cong.\n\n" +
+               "Ban co the dang nhap voi mat khau moi ngay bay gio.\n\n" +
+               "Neu ban khong thuc hien thao tac nay, vui long lien he voi chung toi ngay lap tuc.\n\n" +
+               "Tran trong,\n" +
                "RapPhim Cinema Team";
     }
 }

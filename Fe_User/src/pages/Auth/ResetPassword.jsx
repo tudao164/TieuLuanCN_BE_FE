@@ -4,7 +4,8 @@ import { useNavigate, Link } from "react-router-dom";
 
 const ResetPassword = () => {
     const [form, setForm] = useState({
-        email: "",
+        email: localStorage.getItem("email") || "",
+        otpCode: "",
         newPassword: "",
         confirmPassword: "",
     });
@@ -26,22 +27,30 @@ const ResetPassword = () => {
             return;
         }
 
+        if (form.newPassword.length < 6) {
+            setMessage("❌ Mật khẩu phải có ít nhất 6 ký tự!");
+            return;
+        }
+
+        if (!/^\d{6}$/.test(form.otpCode)) {
+            setMessage("❌ Mã OTP phải có 6 chữ số!");
+            return;
+        }
+
         setLoading(true);
 
         try {
             const res = await axios.post("http://localhost:8080/api/auth/reset-password", {
                 email: form.email,
-                new_password: form.newPassword,
+                otpCode: form.otpCode,
+                newPassword: form.newPassword,
             });
 
-            if (res.data.success) {
-                setMessage("✅ Đặt lại mật khẩu thành công! Chuyển về trang đăng nhập...");
-                setTimeout(() => {
-                    navigate("/login");
-                }, 2000);
-            } else {
-                setMessage(res.data.message || "❌ Đặt lại mật khẩu thất bại!");
-            }
+            setMessage("✅ Đặt lại mật khẩu thành công! Chuyển về trang đăng nhập...");
+            localStorage.removeItem("email");
+            setTimeout(() => {
+                navigate("/login");
+            }, 2000);
         } catch (err) {
             setMessage(err.response?.data?.message || "❌ Lỗi kết nối server!");
         } finally {
@@ -93,6 +102,23 @@ const ResetPassword = () => {
                                 onChange={handleChange}
                                 className="w-full px-4 py-3 border border-white/20 rounded-2xl focus:outline-none focus:ring-4 focus:ring-purple-500/30 focus:border-purple-400 transition-all duration-200 bg-white/5 text-white placeholder-white/50"
                                 required
+                                readOnly
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-white/80 mb-2">
+                                Mã OTP
+                            </label>
+                            <input
+                                type="text"
+                                name="otpCode"
+                                placeholder="Nhập mã OTP 6 số"
+                                value={form.otpCode}
+                                onChange={handleChange}
+                                maxLength={6}
+                                className="w-full px-4 py-3 border border-white/20 rounded-2xl focus:outline-none focus:ring-4 focus:ring-purple-500/30 focus:border-purple-400 transition-all duration-200 bg-white/5 text-white placeholder-white/50 text-center text-lg font-mono"
+                                required
                             />
                         </div>
 
@@ -103,7 +129,7 @@ const ResetPassword = () => {
                             <input
                                 type="password"
                                 name="newPassword"
-                                placeholder="Nhập mật khẩu mới"
+                                placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)"
                                 value={form.newPassword}
                                 onChange={handleChange}
                                 className="w-full px-4 py-3 border border-white/20 rounded-2xl focus:outline-none focus:ring-4 focus:ring-purple-500/30 focus:border-purple-400 transition-all duration-200 bg-white/5 text-white placeholder-white/50"

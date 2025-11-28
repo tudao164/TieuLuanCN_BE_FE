@@ -82,4 +82,54 @@ public class AuthController {
             return ResponseEntity.badRequest().body(errorResponse);
         }
     }
+    
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> request) {
+        try {
+            String email = request.get("email");
+            if (email == null || email.trim().isEmpty()) {
+                throw new RuntimeException("Email is required");
+            }
+            
+            String message = authService.forgotPassword(email);
+            
+            Map<String, String> response = new HashMap<>();
+            response.put("message", message);
+            response.put("email", email);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> request) {
+        try {
+            String email = request.get("email");
+            String otpCode = request.get("otpCode");
+            String newPassword = request.get("newPassword");
+            
+            if (email == null || otpCode == null || newPassword == null) {
+                throw new RuntimeException("Email, OTP code, and new password are required");
+            }
+            
+            if (newPassword.length() < 6) {
+                throw new RuntimeException("Password must be at least 6 characters");
+            }
+            
+            String message = authService.resetPassword(email, otpCode, newPassword);
+            
+            Map<String, String> response = new HashMap<>();
+            response.put("message", message);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
 }
