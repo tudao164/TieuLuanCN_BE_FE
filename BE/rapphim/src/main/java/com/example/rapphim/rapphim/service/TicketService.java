@@ -59,6 +59,22 @@ public class TicketService {
         Showtime showtime = showtimeRepository.findById(ticketRequest.getShowtimeId())
                 .orElseThrow(() -> new RuntimeException("Showtime not found"));
         
+        // Kiem tra showtime co con hop le khong (chua bat dau hoac dang chieu)
+        LocalDate today = LocalDate.now();
+        java.time.LocalTime now = java.time.LocalTime.now();
+        
+        // Neu showtime la ngay qua khu -> khong cho dat
+        if (showtime.getShowtimeDate().isBefore(today)) {
+            throw new RuntimeException("Không thể đặt vé cho suất chiếu đã qua");
+        }
+        
+        // Neu showtime la hom nay nhung da bat dau hoac ket thuc -> khong cho dat
+        if (showtime.getShowtimeDate().isEqual(today)) {
+            if (showtime.getStartTime().isBefore(now) || showtime.getStartTime().equals(now)) {
+                throw new RuntimeException("Không thể đặt vé cho suất chiếu đã bắt đầu hoặc đang chiếu");
+            }
+        }
+        
         // Validate tất cả ghế trước khi đặt
         List<Seat> seats = new ArrayList<>();
         for (Long seatId : ticketRequest.getSeatIds()) {
@@ -96,8 +112,7 @@ public class TicketService {
             promotion = promotionRepository.findByCode(ticketRequest.getPromotionCode())
                     .orElseThrow(() -> new RuntimeException("Promotion code not found: " + ticketRequest.getPromotionCode()));
             
-            // Kiểm tra mã khuyến mãi còn hiệu lực
-            LocalDate today = LocalDate.now();
+            // Kiểm tra mã khuyến mãi còn hiệu lực (su dung lai bien today da khai bao)
             if (promotion.getStartDate().isAfter(today)) {
                 throw new RuntimeException("Promotion code has not started yet");
             }
