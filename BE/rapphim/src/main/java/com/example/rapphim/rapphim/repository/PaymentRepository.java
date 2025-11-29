@@ -21,23 +21,23 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     // Tính tổng doanh thu từ payments đã hoàn thành (bao gồm vé + combo - giảm giá)
     @Query("SELECT COALESCE(SUM(p.amount), 0.0) FROM Payment p " +
            "WHERE p.status = 'COMPLETED' " +
-           "AND DATE(p.createdAt) BETWEEN :startDate AND :endDate")
+           "AND CAST(p.createdAt AS LocalDate) BETWEEN :startDate AND :endDate")
     Double getTotalRevenueByDateRange(@Param("startDate") LocalDate startDate, 
                                       @Param("endDate") LocalDate endDate);
     
     // Đếm số payment thành công trong ngày
     @Query("SELECT COUNT(p) FROM Payment p " +
            "WHERE p.status = 'COMPLETED' " +
-           "AND DATE(p.createdAt) = :date")
+           "AND CAST(p.createdAt AS LocalDate) = :date")
     Long countCompletedPaymentsByDate(@Param("date") LocalDate date);
     
     // Lấy doanh thu theo từng ngày cho biểu đồ
-    @Query("SELECT DATE(p.createdAt) as date, COALESCE(SUM(p.amount), 0.0) as revenue " +
+    @Query("SELECT CAST(p.createdAt AS LocalDate) as date, COALESCE(SUM(p.amount), 0.0) as revenue " +
            "FROM Payment p " +
            "WHERE p.status = 'COMPLETED' " +
-           "AND DATE(p.createdAt) BETWEEN :startDate AND :endDate " +
-           "GROUP BY DATE(p.createdAt) " +
-           "ORDER BY DATE(p.createdAt)")
+           "AND CAST(p.createdAt AS LocalDate) BETWEEN :startDate AND :endDate " +
+           "GROUP BY CAST(p.createdAt AS LocalDate) " +
+           "ORDER BY CAST(p.createdAt AS LocalDate)")
     List<Object[]> getDailyRevenueByDateRange(@Param("startDate") LocalDate startDate, 
                                               @Param("endDate") LocalDate endDate);
 }
