@@ -14,12 +14,7 @@ import {
     LineChart,
     User,
     Clock,
-    AlertCircle,
-    Star,
-    MessageSquare,
-    Plus,
-    Edit,
-    Trash2
+    AlertCircle
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -28,8 +23,7 @@ const StatisticsManagement = () => {
         daily: {},
         revenue: {},
         allTickets: [],
-        allUsers: [],
-        allReviews: []
+        allUsers: []
     });
     const [loading, setLoading] = useState(false);
     const [dateRange, setDateRange] = useState({
@@ -39,12 +33,6 @@ const StatisticsManagement = () => {
     const [activeTab, setActiveTab] = useState('overview');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-
-    // State cho tính năng review
-    const [showReviewModal, setShowReviewModal] = useState(false);
-    const [newReview, setNewReview] = useState({ star: 5, comment: '', movieId: '' });
-    const [availableMovies, setAvailableMovies] = useState([]);
-    const [myReviews, setMyReviews] = useState([]);
 
     const API_BASE_URL = 'http://localhost:8080/api';
     const ADMIN_API_URL = 'http://localhost:8080/api/admin';
@@ -146,102 +134,6 @@ const StatisticsManagement = () => {
         }
     };
 
-    // Fetch tất cả đánh giá (Admin)
-    const fetchAllReviews = async () => {
-        setLoading(true);
-        try {
-            const response = await axios.get(`${ADMIN_API_URL}/reviews`, getAuthConfig());
-            setStatistics(prev => ({
-                ...prev,
-                allReviews: response.data || []
-            }));
-        } catch (err) {
-            console.error('Lỗi fetch all reviews:', err);
-            // Không hiển thị lỗi nếu API reviews chưa có
-            if (err.response?.status !== 404) {
-                console.log('Lỗi fetch reviews (có thể API chưa có):', err.response?.data);
-            }
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Fetch đánh giá của tôi
-    const fetchMyReviews = async () => {
-        try {
-            const response = await axios.get(`${API_BASE_URL}/reviews/my-reviews`, getAuthConfig());
-            setMyReviews(response.data || []);
-        } catch (err) {
-            console.error('Lỗi fetch my reviews:', err);
-            if (err.response?.status !== 404) {
-                console.log('Lỗi fetch my reviews:', err.response?.data);
-            }
-        }
-    };
-
-    // Fetch danh sách phim có thể review
-    const fetchAvailableMovies = async () => {
-        try {
-            const response = await axios.get(`${API_BASE_URL}/movies/watchable`, getAuthConfig());
-            setAvailableMovies(response.data || []);
-        } catch (err) {
-            console.error('Lỗi fetch available movies:', err);
-            setAvailableMovies([
-                { movieID: 1, title: 'Avengers: Endgame' },
-                { movieID: 2, title: 'Spider-Man: No Way Home' },
-                { movieID: 3, title: 'The Batman' }
-            ]);
-        }
-    };
-
-    // Tạo review mới
-    const createReview = async (e) => {
-        e.preventDefault();
-        if (!newReview.movieId || !newReview.comment.trim()) {
-            setError('Vui lòng chọn phim và nhập nội dung đánh giá');
-            return;
-        }
-
-        try {
-            const response = await axios.post(
-                `${API_BASE_URL}/reviews`,
-                {
-                    star: newReview.star,
-                    comment: newReview.comment,
-                    movieId: parseInt(newReview.movieId)
-                },
-                getAuthConfig()
-            );
-
-            setSuccess('Đánh giá đã được gửi thành công!');
-            setShowReviewModal(false);
-            setNewReview({ star: 5, comment: '', movieId: '' });
-
-            // Refresh danh sách
-            fetchAllReviews();
-            fetchMyReviews();
-        } catch (err) {
-            console.error('Lỗi create review:', err);
-            const errorMessage = err.response?.data?.error || err.response?.data?.message || 'Lỗi khi gửi đánh giá';
-            setError(errorMessage);
-        }
-    };
-
-    // Xóa review
-    const deleteReview = async (reviewId) => {
-        if (!window.confirm('Bạn có chắc muốn xóa đánh giá này?')) return;
-
-        try {
-            await axios.delete(`${API_BASE_URL}/reviews/${reviewId}`, getAuthConfig());
-            setSuccess('Đánh giá đã được xóa thành công!');
-            fetchAllReviews();
-            fetchMyReviews();
-        } catch (err) {
-            console.error('Lỗi delete review:', err);
-            setError('Lỗi khi xóa đánh giá: ' + (err.response?.data?.message || err.message));
-        }
-    };
-
     // Load tất cả dữ liệu
     const loadAllData = async () => {
         setLoading(true);
@@ -253,10 +145,7 @@ const StatisticsManagement = () => {
                 fetchDailyStatistics(),
                 fetchRevenueStatistics(),
                 fetchAllTickets(),
-                fetchAllUsers(),
-                fetchAllReviews(),
-                fetchMyReviews(),
-                fetchAvailableMovies()
+                fetchAllUsers()
             ]);
             setSuccess('Đã tải dữ liệu thống kê thành công!');
         } catch (err) {
@@ -270,7 +159,6 @@ const StatisticsManagement = () => {
     const calculateStats = () => {
         const tickets = statistics.allTickets || [];
         const users = statistics.allUsers || [];
-        const reviews = statistics.allReviews || [];
 
         const activeTickets = tickets.filter(ticket => ticket.status === 'ACTIVE').length;
         const totalRevenue = tickets
@@ -281,19 +169,12 @@ const StatisticsManagement = () => {
         const staffUsers = users.filter(user => user.role === 'STAFF').length;
         const adminUsers = users.filter(user => user.role === 'ADMIN').length;
 
-        const totalReviews = reviews.length;
-        const averageRating = totalReviews > 0
-            ? reviews.reduce((sum, review) => sum + (review.rating || review.star || 0), 0) / totalReviews
-            : 0;
-
         return {
             activeTickets,
             totalRevenue,
             customerUsers,
             staffUsers,
             adminUsers,
-            totalReviews,
-            averageRating,
             totalTickets: tickets.length,
             totalUsers: users.length
         };
@@ -317,21 +198,6 @@ const StatisticsManagement = () => {
 
     const formatNumber = (num) => {
         return new Intl.NumberFormat('vi-VN').format(num || 0);
-    };
-
-    const renderStars = (rating) => {
-        const starRating = rating || 0;
-        return (
-            <div className="flex items-center gap-1">
-                {[1, 2, 3, 4, 5].map((star) => (
-                    <Star
-                        key={star}
-                        className={`w-4 h-4 ${star <= starRating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-400'}`}
-                    />
-                ))}
-                <span className="ml-1 text-sm text-white/70">({starRating.toFixed(1)})</span>
-            </div>
-        );
     };
 
     // Load data khi component mount
@@ -473,16 +339,6 @@ const StatisticsManagement = () => {
                             <Users className="w-4 h-4 inline mr-2" />
                             Người dùng ({stats.totalUsers})
                         </button>
-                        <button
-                            onClick={() => setActiveTab('reviews')}
-                            className={`px-4 py-2 font-medium transition-all whitespace-nowrap ${activeTab === 'reviews'
-                                ? 'text-white border-b-2 border-yellow-500'
-                                : 'text-white/60 hover:text-white'
-                                }`}
-                        >
-                            <Star className="w-4 h-4 inline mr-2" />
-                            Đánh giá ({stats.totalReviews})
-                        </button>
                     </div>
 
                     {/* Loading State */}
@@ -540,140 +396,19 @@ const StatisticsManagement = () => {
                                 <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 backdrop-blur-lg rounded-xl p-6 border border-yellow-500/30">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <div className="text-3xl font-bold text-yellow-300">{formatNumber(stats.totalReviews)}</div>
-                                            <div className="text-yellow-200 text-sm mt-1">Đánh giá</div>
+                                            <div className="text-3xl font-bold text-yellow-300">{formatNumber(stats.totalTickets)}</div>
+                                            <div className="text-yellow-200 text-sm mt-1">Tổng vé</div>
                                         </div>
-                                        <Star className="w-8 h-8 text-yellow-400" />
+                                        <Ticket className="w-8 h-8 text-yellow-400" />
                                     </div>
                                     <div className="text-yellow-300 text-xs mt-2">
-                                        Điểm TB: {stats.averageRating.toFixed(1)}/5
+                                        Vé active: {formatNumber(stats.activeTickets)}
                                     </div>
                                 </div>
                             </div>
                         </div>
                     )}
                 </div>
-
-                {/* Reviews Tab */}
-                {!loading && activeTab === 'reviews' && (
-                    <div className="space-y-6">
-                        <div className="flex justify-between items-center">
-                            <h3 className="text-xl font-bold text-white">Quản Lý Đánh Giá</h3>
-                            <button
-                                onClick={() => setShowReviewModal(true)}
-                                className="flex items-center gap-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white px-4 py-2 rounded-xl transition-all"
-                            >
-                                <Plus className="w-4 h-4" />
-                                Thêm Đánh Giá
-                            </button>
-                        </div>
-
-                        {/* Review Stats */}
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 backdrop-blur-lg rounded-xl p-6 border border-yellow-500/30">
-                                <div className="text-2xl font-bold text-yellow-300 text-center">{formatNumber(stats.totalReviews)}</div>
-                                <div className="text-yellow-200 text-sm text-center mt-1">Tổng đánh giá</div>
-                            </div>
-                            <div className="bg-gradient-to-br from-green-500/20 to-green-600/20 backdrop-blur-lg rounded-xl p-6 border border-green-500/30">
-                                <div className="text-2xl font-bold text-green-300 text-center">{stats.averageRating.toFixed(1)}</div>
-                                <div className="text-green-200 text-sm text-center mt-1">Điểm trung bình</div>
-                            </div>
-                            <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 backdrop-blur-lg rounded-xl p-6 border border-emerald-500/30">
-                                <div className="text-2xl font-bold text-emerald-300 text-center">{formatNumber(stats.totalTickets)}</div>
-                                <div className="text-emerald-200 text-sm text-center mt-1">Tổng vé</div>
-                            </div>
-                            <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 backdrop-blur-lg rounded-xl p-6 border border-blue-500/30">
-                                <div className="text-2xl font-bold text-blue-300 text-center">{formatNumber(stats.totalUsers)}</div>
-                                <div className="text-blue-200 text-sm text-center mt-1">Tổng người dùng</div>
-                            </div>
-                        </div>
-
-                        {/* My Reviews */}
-                        <div className="bg-white/5 backdrop-blur-lg rounded-xl p-6 border border-white/10">
-                            <h4 className="text-lg font-bold text-white mb-4">Đánh Giá Của Tôi ({myReviews.length})</h4>
-                            <div className="space-y-4">
-                                {myReviews.map((review) => (
-                                    <div key={review.reviewID} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="font-medium text-white">{review.movie?.title || 'Phim không xác định'}</span>
-                                                    <span className="text-white/50 text-sm">•</span>
-                                                    <span className="text-white/50 text-sm">{formatDate(review.createdAt)}</span>
-                                                </div>
-                                                {renderStars(review.star || review.rating)}
-                                            </div>
-                                            <button
-                                                onClick={() => deleteReview(review.reviewID)}
-                                                className="flex items-center gap-1 text-red-400 hover:text-red-300 text-sm ml-4"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                                Xóa
-                                            </button>
-                                        </div>
-                                        {review.comment && (
-                                            <p className="text-white/80 mt-2 text-sm leading-relaxed">
-                                                {review.comment}
-                                            </p>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                            {myReviews.length === 0 && (
-                                <div className="text-center py-8 text-white/50">
-                                    <Star className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                                    <p>Bạn chưa có đánh giá nào</p>
-                                    <button
-                                        onClick={() => setShowReviewModal(true)}
-                                        className="mt-3 text-yellow-400 hover:text-yellow-300 underline"
-                                    >
-                                        Thêm đánh giá đầu tiên
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* All Reviews List */}
-                        <div className="bg-white/5 backdrop-blur-lg rounded-xl p-6 border border-white/10">
-                            <h4 className="text-lg font-bold text-white mb-4">Tất Cả Đánh Giá ({stats.totalReviews})</h4>
-                            <div className="space-y-4">
-                                {statistics.allReviews.map((review) => (
-                                    <div key={review.reviewID} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-medium text-white">{review.customer?.name || review.user?.name || 'Người dùng ẩn danh'}</span>
-                                                    <span className="text-white/50 text-sm">•</span>
-                                                    <span className="text-white/50 text-sm">{formatDate(review.createdAt)}</span>
-                                                </div>
-                                                <div className="text-white/70 text-sm mt-1">
-                                                    {review.movie?.title || 'Phim không xác định'}
-                                                </div>
-                                            </div>
-                                            {renderStars(review.star || review.rating)}
-                                        </div>
-                                        {review.comment && (
-                                            <p className="text-white/80 mt-2 text-sm leading-relaxed">
-                                                {review.comment}
-                                            </p>
-                                        )}
-                                        <div className="flex items-center gap-4 mt-3 text-xs text-white/50">
-                                            <div className="px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-300">
-                                                Đánh giá
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            {statistics.allReviews.length === 0 && (
-                                <div className="text-center py-8 text-white/50">
-                                    <Star className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                                    <p>Chưa có đánh giá nào</p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
 
                 {/* Revenue Tab */}
                 {!loading && activeTab === 'revenue' && (
@@ -833,97 +568,6 @@ const StatisticsManagement = () => {
                     </div>
                 )}
             </div>
-
-            {/* Review Modal */}
-            {showReviewModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-white/20">
-                        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                            <Star className="w-5 h-5 text-yellow-400" />
-                            Thêm Đánh Giá Phim
-                        </h3>
-
-                        <form onSubmit={createReview}>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-white/80 mb-2 text-sm font-medium">
-                                        Chọn phim
-                                    </label>
-                                    <select
-                                        value={newReview.movieId}
-                                        onChange={(e) => setNewReview(prev => ({ ...prev, movieId: e.target.value }))}
-                                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                                        required
-                                    >
-                                        <option value="">-- Chọn phim --</option>
-                                        {availableMovies.map(movie => (
-                                            <option key={movie.movieID} value={movie.movieID}>
-                                                {movie.title}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="block text-white/80 mb-2 text-sm font-medium">
-                                        Đánh giá sao
-                                    </label>
-                                    <div className="flex gap-2">
-                                        {[1, 2, 3, 4, 5].map(star => (
-                                            <button
-                                                key={star}
-                                                type="button"
-                                                onClick={() => setNewReview(prev => ({ ...prev, star }))}
-                                                className={`p-2 rounded-lg transition-all ${star <= newReview.star
-                                                    ? 'bg-yellow-500 text-white'
-                                                    : 'bg-white/10 text-white/50 hover:bg-white/20'
-                                                    }`}
-                                            >
-                                                <Star className="w-6 h-6" />
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <div className="text-white/60 text-sm mt-1">
-                                        {newReview.star === 5 ? 'Rất tuyệt vời' :
-                                            newReview.star === 4 ? 'Tốt' :
-                                                newReview.star === 3 ? 'Bình thường' :
-                                                    newReview.star === 2 ? 'Không hài lòng' : 'Rất tệ'}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-white/80 mb-2 text-sm font-medium">
-                                        Nhận xét
-                                    </label>
-                                    <textarea
-                                        value={newReview.comment}
-                                        onChange={(e) => setNewReview(prev => ({ ...prev, comment: e.target.value }))}
-                                        placeholder="Chia sẻ cảm nhận của bạn về bộ phim..."
-                                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 h-32 resize-none"
-                                        required
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex gap-3 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowReviewModal(false)}
-                                    className="flex-1 px-4 py-3 bg-white/10 text-white rounded-xl hover:bg-white/20 transition-all"
-                                >
-                                    Hủy
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="flex-1 px-4 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-xl hover:from-yellow-600 hover:to-orange-600 transition-all"
-                                >
-                                    Gửi Đánh Giá
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
