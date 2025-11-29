@@ -10,6 +10,22 @@ const PromotionCarousel = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // Danh sách banner quảng cáo tĩnh từ folder QC
+    const staticBanners = [
+        {
+            id: 'static-1',
+            image: '/QC/banner-web.jpg',
+            alt: 'Banner quảng cáo Cinestar',
+            link: '/book-ticket-result'
+        },
+        {
+            id: 'static-2',
+            image: '/QC/chaching2 (1).jpg',
+            alt: 'Quảng cáo khuyến mãi',
+            link: '/book-ticket-result'
+        }
+    ];
+
     useEffect(() => {
         fetchPromotions();
     }, []);
@@ -125,6 +141,25 @@ const PromotionCarousel = () => {
                     }}
                     className="promotion-swiper rounded-2xl overflow-hidden shadow-2xl"
                 >
+                    {/* Static banner slides từ folder QC */}
+                    {staticBanners.map((banner) => (
+                        <SwiperSlide key={banner.id}>
+                            <div className="relative w-full" style={{ height: '400px' }}>
+                                <a href={banner.link} className="block w-full h-full">
+                                    <img
+                                        src={banner.image}
+                                        alt={banner.alt}
+                                        className="w-full h-full object-cover rounded-2xl"
+                                        onError={(e) => {
+                                            e.target.src = `https://via.placeholder.com/1200x400/6366f1/ffffff?text=${encodeURIComponent(banner.alt)}`;
+                                        }}
+                                    />
+                                </a>
+                            </div>
+                        </SwiperSlide>
+                    ))}
+
+                    {/* Dynamic promotion slides từ API */}
                     {promotions.map((promo, index) => {
                         const displayPromo = mapPromotionToDisplay(promo, index);
                         return (

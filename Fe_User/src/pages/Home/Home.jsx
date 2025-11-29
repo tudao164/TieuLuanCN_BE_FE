@@ -126,84 +126,118 @@ const Home = () => {
                     <PromotionBanner />
                 </div>
 
-                {/* Quick Booking with Enhanced Style */}
-                <div className="mb-16 px-4 animate-fadeIn delay-100">
-                    <div className="max-w-7xl mx-auto">
-                        <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10 shadow-2xl transform hover:scale-[1.02] transition-all duration-300">
-                            <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-400 mb-4 flex items-center gap-2">
-                                <svg className="w-7 h-7 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/>
-                                </svg>
-                                Đặt Vé Nhanh
-                            </h2>
-                            <QuickBooking />
+                {/* Layout with Sidebars */}
+                <div className="flex gap-4 px-4 max-w-[1800px] mx-auto">
+                    {/* Left Sidebar - Ad */}
+                    <aside className="hidden xl:block w-[160px] flex-shrink-0 sticky top-20 self-start">
+                        <div className="space-y-4">
+                            <a 
+                                href="/book-ticket-result" 
+                                className="block rounded-xl overflow-hidden shadow-2xl transform hover:scale-105 transition-all duration-300 border-2 border-yellow-400/30 hover:border-yellow-400"
+                            >
+                                <img
+                                    src="/QC_Slide/120x600-blfd.png"
+                                    alt="Quảng cáo sidebar"
+                                    className="w-full h-auto"
+                                    onError={(e) => {
+                                        e.target.src = 'https://via.placeholder.com/120x600/6366f1/ffffff?text=Ad+Space';
+                                    }}
+                                />
+                            </a>
                         </div>
-                    </div>
-                </div>
+                    </aside>
 
-                {/* Movie List Section */}
-                <div className="mb-16 px-4 animate-fadeIn delay-200">
-                    <div className="max-w-7xl mx-auto">
-                        <div className="text-center mb-8">
-                            <h2 className="text-4xl font-bold text-white mb-2 flex items-center justify-center gap-3">
-                                <span className="text-5xl">🎬</span>
-                                Phim Đang Hot
-                            </h2>
-                            <div className="w-24 h-1 bg-gradient-to-r from-yellow-400 to-orange-400 mx-auto rounded-full"></div>
-                        </div>
-                        <MovieList />
-                    </div>
-                </div>
-
-                {/* Now Showing Section */}
-                <div className="mb-16 px-4 animate-fadeIn delay-300">
-                    <div className="max-w-7xl mx-auto">
-                        <div className="text-center mb-8">
-                            <h2 className="text-4xl font-bold text-white mb-2 flex items-center justify-center gap-3">
-                                <span className="text-5xl">🎥</span>
-                                Đang Chiếu
-                            </h2>
-                            <div className="w-24 h-1 bg-gradient-to-r from-purple-400 to-pink-400 mx-auto rounded-full"></div>
-                            <p className="text-white/60 mt-3">Những bộ phim đang được chiếu tại rạp</p>
-                        </div>
-                        <NowShowingMovies />
-                    </div>
-                </div>
-
-                {/* Upcoming Movies Section */}
-                <div className="mb-16 px-4 animate-fadeIn delay-400">
-                    <div className="max-w-7xl mx-auto">
-                        <div className="text-center mb-8">
-                            <h2 className="text-4xl font-bold text-white mb-2 flex items-center justify-center gap-3">
-                                <span className="text-5xl">⏰</span>
-                                Sắp Chiếu
-                            </h2>
-                            <div className="w-24 h-1 bg-gradient-to-r from-blue-400 to-cyan-400 mx-auto rounded-full"></div>
-                            <p className="text-white/60 mt-3">Đừng bỏ lỡ những bom tấn sắp ra mắt</p>
-                        </div>
-                        <UpcomingMovies
-                            upcomingMovies={upcomingData}
-                            title=""
-                        />
-                    </div>
-                </div>
-
-                {/* Error Message */}
-                {errorMessage && (
-                    <div className="mb-8 px-4 animate-shake">
-                        <div className="max-w-7xl mx-auto">
-                            <div className="bg-red-500/20 backdrop-blur-md border border-red-500/30 rounded-xl p-6 text-center shadow-lg">
-                                <div className="flex items-center justify-center gap-2 mb-2">
-                                    <svg className="w-6 h-6 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
+                    {/* Main Content Column */}
+                    <div className="flex-1 min-w-0">
+                        {/* Quick Booking with Enhanced Style */}
+                        <div className="mb-16 animate-fadeIn delay-100">
+                            <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10 shadow-2xl transform hover:scale-[1.02] transition-all duration-300">
+                                <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-400 mb-4 flex items-center gap-2">
+                                    <svg className="w-7 h-7 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/>
                                     </svg>
-                                    <p className="text-red-300 font-semibold">Có lỗi xảy ra</p>
-                                </div>
-                                <p className="text-red-200 text-sm">{errorMessage}</p>
+                                    Đặt Vé Nhanh
+                                </h2>
+                                <QuickBooking />
                             </div>
                         </div>
+
+                        {/* Movie List Section */}
+                        <div className="mb-16 animate-fadeIn delay-200">
+                            <div className="text-center mb-8">
+                                <h2 className="text-4xl font-bold text-white mb-2 flex items-center justify-center gap-3">
+                                    <span className="text-5xl">🎬</span>
+                                    Phim Đang Hot
+                                </h2>
+                                <div className="w-24 h-1 bg-gradient-to-r from-yellow-400 to-orange-400 mx-auto rounded-full"></div>
+                            </div>
+                            <MovieList />
+                        </div>
+
+                        {/* Now Showing Section */}
+                        <div className="mb-16 animate-fadeIn delay-300">
+                            <div className="text-center mb-8">
+                                <h2 className="text-4xl font-bold text-white mb-2 flex items-center justify-center gap-3">
+                                    <span className="text-5xl">🎥</span>
+                                    Đang Chiếu
+                                </h2>
+                                <div className="w-24 h-1 bg-gradient-to-r from-purple-400 to-pink-400 mx-auto rounded-full"></div>
+                                <p className="text-white/60 mt-3">Những bộ phim đang được chiếu tại rạp</p>
+                            </div>
+                            <NowShowingMovies />
+                        </div>
+
+                        {/* Upcoming Movies Section */}
+                        <div className="mb-16 animate-fadeIn delay-400">
+                            <div className="text-center mb-8">
+                                <h2 className="text-4xl font-bold text-white mb-2 flex items-center justify-center gap-3">
+                                    <span className="text-5xl">⏰</span>
+                                    Sắp Chiếu
+                                </h2>
+                                <div className="w-24 h-1 bg-gradient-to-r from-blue-400 to-cyan-400 mx-auto rounded-full"></div>
+                                <p className="text-white/60 mt-3">Đừng bỏ lỡ những bom tấn sắp ra mắt</p>
+                            </div>
+                            <UpcomingMovies
+                                upcomingMovies={upcomingData}
+                                title=""
+                            />
+                        </div>
+
+                        {/* Error Message */}
+                        {errorMessage && (
+                            <div className="mb-8 animate-shake">
+                                <div className="bg-red-500/20 backdrop-blur-md border border-red-500/30 rounded-xl p-6 text-center shadow-lg">
+                                    <div className="flex items-center justify-center gap-2 mb-2">
+                                        <svg className="w-6 h-6 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
+                                        </svg>
+                                        <p className="text-red-300 font-semibold">Có lỗi xảy ra</p>
+                                    </div>
+                                    <p className="text-red-200 text-sm">{errorMessage}</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                )}
+
+                    {/* Right Sidebar - Ad */}
+                    <aside className="hidden xl:block w-[160px] flex-shrink-0 sticky top-20 self-start">
+                        <div className="space-y-4">
+                            <a 
+                                href="/book-ticket-result" 
+                                className="block rounded-xl overflow-hidden shadow-2xl transform hover:scale-105 transition-all duration-300 border-2 border-pink-400/30 hover:border-pink-400"
+                            >
+                                <img
+                                    src="/QC_Slide/120x600-blfd.png"
+                                    alt="Quảng cáo sidebar"
+                                    className="w-full h-auto"
+                                    onError={(e) => {
+                                        e.target.src = 'https://via.placeholder.com/120x600/ec4899/ffffff?text=Ad+Space';
+                                    }}
+                                />
+                            </a>
+                        </div>
+                    </aside>
+                </div>
             </main>
 
             {/* Footer */}
