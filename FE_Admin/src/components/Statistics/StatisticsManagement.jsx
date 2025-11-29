@@ -17,13 +17,15 @@ import {
     AlertCircle
 } from 'lucide-react';
 import axios from 'axios';
+import { LineChart as RechartsLineChart, Line, BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const StatisticsManagement = () => {
     const [statistics, setStatistics] = useState({
         daily: {},
         revenue: {},
         allTickets: [],
-        allUsers: []
+        allUsers: [],
+        chartData: []
     });
     const [loading, setLoading] = useState(false);
     const [dateRange, setDateRange] = useState({
@@ -82,13 +84,22 @@ const StatisticsManagement = () => {
         setLoading(true);
         setError('');
         try {
+            // Fetch revenue summary
             const response = await axios.get(
                 `${ADMIN_API_URL}/statistics/revenue?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`,
                 getAuthConfig()
             );
+            
+            // Fetch chart data
+            const chartResponse = await axios.get(
+                `${ADMIN_API_URL}/statistics/revenue-chart?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`,
+                getAuthConfig()
+            );
+            
             setStatistics(prev => ({
                 ...prev,
-                revenue: response.data || {}
+                revenue: response.data || {},
+                chartData: chartResponse.data || []
             }));
             setSuccess(`Đã tải thống kê doanh thu từ ${dateRange.startDate} đến ${dateRange.endDate}`);
         } catch (err) {
@@ -344,15 +355,18 @@ const StatisticsManagement = () => {
                         <div className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="bg-white/5 backdrop-blur-lg rounded-xl p-6 border border-white/10">
-                                    <h3 className="text-lg font-bold text-white mb-4">Thống Kê Doanh Thu</h3>
+                                    <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                        <DollarSign className="w-5 h-5 text-green-400" />
+                                        Thống Kê Doanh Thu
+                                    </h3>
                                     <div className="space-y-3">
                                         <div className="flex justify-between items-center">
-                                            <span className="text-white/70">Doanh thu trong khoảng thời gian:</span>
-                                            <span className="text-green-400 font-bold">
+                                            <span className="text-white/70">Doanh thu thực tế (vé + combo - giảm giá):</span>
+                                            <span className="text-green-400 font-bold text-xl">
                                                 {statistics.revenue.totalRevenue ? formatCurrency(statistics.revenue.totalRevenue) : '0 ₫'}
                                             </span>
                                         </div>
-                                        <div className="flex justify-between items-center">
+                                        <div className="flex justify-between items-center pt-2 border-t border-white/10">
                                             <span className="text-white/70">Từ ngày:</span>
                                             <span className="text-white">{dateRange.startDate}</span>
                                         </div>
@@ -364,29 +378,92 @@ const StatisticsManagement = () => {
                                 </div>
 
                                 <div className="bg-white/5 backdrop-blur-lg rounded-xl p-6 border border-white/10">
-                                    <h3 className="text-lg font-bold text-white mb-4">Doanh Thu Hôm Nay</h3>
+                                    <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                        <TrendingUp className="w-5 h-5 text-yellow-400" />
+                                        Doanh Thu Hôm Nay
+                                    </h3>
                                     <div className="space-y-3">
                                         <div className="flex justify-between items-center">
                                             <span className="text-white/70">Doanh thu:</span>
-                                            <span className="text-green-400 font-bold">
+                                            <span className="text-green-400 font-bold text-xl">
                                                 {statistics.daily.todayRevenue ? formatCurrency(statistics.daily.todayRevenue) : '0 ₫'}
                                             </span>
                                         </div>
-                                        <div className="flex justify-between items-center">
+                                        <div className="flex justify-between items-center pt-2 border-t border-white/10">
                                             <span className="text-white/70">Số vé đã bán:</span>
                                             <span className="text-blue-400 font-bold">
-                                                {statistics.daily.ticketsSoldToday || 0}
+                                                {statistics.daily.ticketsSoldToday || 0} vé
                                             </span>
                                         </div>
                                         <div className="flex justify-between items-center">
-                                            <span className="text-white/70">Giá vé trung bình:</span>
-                                            <span className="text-yellow-400 font-bold">
-                                                {statistics.daily.ticketsSoldToday > 0 ? formatCurrency(statistics.daily.todayRevenue / statistics.daily.ticketsSoldToday) : '0 ₫'}
+                                            <span className="text-white/70">Số thanh toán:</span>
+                                            <span className="text-purple-400 font-bold">
+                                                {statistics.daily.completedPaymentsToday || 0} đơn
                                             </span>
                                         </div>
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Revenue Chart */}
+                            {statistics.chartData && statistics.chartData.length > 0 && (
+                                <div className="bg-white/5 backdrop-blur-lg rounded-xl p-6 border border-white/10">
+                                    <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+                                        <LineChart className="w-5 h-5 text-blue-400" />
+                                        Biểu Đồ Doanh Thu Theo Ngày
+                                    </h3>
+                                    <ResponsiveContainer width="100%" height={350}>
+                                        <RechartsBarChart data={statistics.chartData}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                                            <XAxis 
+                                                dataKey="date" 
+                                                stroke="rgba(255,255,255,0.7)"
+                                                tick={{ fill: 'rgba(255,255,255,0.7)' }}
+                                            />
+                                            <YAxis 
+                                                stroke="rgba(255,255,255,0.7)"
+                                                tick={{ fill: 'rgba(255,255,255,0.7)' }}
+                                                tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`}
+                                            />
+                                            <Tooltip 
+                                                contentStyle={{ 
+                                                    backgroundColor: 'rgba(30, 41, 59, 0.95)', 
+                                                    border: '1px solid rgba(255,255,255,0.2)',
+                                                    borderRadius: '8px',
+                                                    color: '#fff'
+                                                }}
+                                                formatter={(value) => [formatCurrency(value), 'Doanh thu']}
+                                                labelStyle={{ color: '#fff' }}
+                                            />
+                                            <Legend 
+                                                wrapperStyle={{ color: '#fff' }}
+                                                formatter={() => 'Doanh thu (₫)'}
+                                            />
+                                            <Bar 
+                                                dataKey="revenue" 
+                                                fill="url(#colorRevenue)" 
+                                                radius={[8, 8, 0, 0]}
+                                            />
+                                            <defs>
+                                                <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.9}/>
+                                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.7}/>
+                                                </linearGradient>
+                                            </defs>
+                                        </RechartsBarChart>
+                                    </ResponsiveContainer>
+                                    <p className="text-white/50 text-sm text-center mt-4">
+                                        💡 Doanh thu đã bao gồm: Giá vé + Combo - Mã giảm giá
+                                    </p>
+                                </div>
+                            )}
+
+                            {statistics.chartData && statistics.chartData.length === 0 && (
+                                <div className="bg-white/5 backdrop-blur-lg rounded-xl p-12 border border-white/10 text-center">
+                                    <LineChart className="w-16 h-16 text-white/30 mx-auto mb-4" />
+                                    <p className="text-white/70">Không có dữ liệu doanh thu trong khoảng thời gian này</p>
+                                </div>
+                            )}
                         </div>
                     )}
 

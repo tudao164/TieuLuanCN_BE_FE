@@ -3,6 +3,7 @@ package com.example.rapphim.rapphim.controller;
 import com.example.rapphim.rapphim.entity.User;
 import com.example.rapphim.rapphim.entity.Ticket;
 import com.example.rapphim.rapphim.service.TicketService;
+import com.example.rapphim.rapphim.service.StatisticsService;
 import com.example.rapphim.rapphim.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -23,6 +24,9 @@ public class AdminController {
     private TicketService ticketService;
     
     @Autowired
+    private StatisticsService statisticsService;
+    
+    @Autowired
     private UserRepository userRepository;
     
     @GetMapping("/tickets")
@@ -39,11 +43,13 @@ public class AdminController {
     public ResponseEntity<Map<String, Object>> getDailyStatistics() {
         Map<String, Object> stats = new HashMap<>();
         
-        Long ticketsSoldToday = ticketService.getTotalTicketsSoldToday();
-        Double todayRevenue = ticketService.getTotalRevenue(LocalDate.now(), LocalDate.now());
+        Long ticketsSoldToday = statisticsService.getTicketsSoldToday();
+        Double todayRevenue = statisticsService.getTotalRevenue(LocalDate.now(), LocalDate.now());
+        Long completedPaymentsToday = statisticsService.getCompletedPaymentsToday();
         
         stats.put("ticketsSoldToday", ticketsSoldToday);
         stats.put("todayRevenue", todayRevenue != null ? todayRevenue : 0.0);
+        stats.put("completedPaymentsToday", completedPaymentsToday);
         
         return ResponseEntity.ok(stats);
     }
@@ -54,13 +60,22 @@ public class AdminController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         
         Map<String, Object> stats = new HashMap<>();
-        Double revenue = ticketService.getTotalRevenue(startDate, endDate);
+        Double revenue = statisticsService.getTotalRevenue(startDate, endDate);
         
         stats.put("startDate", startDate);
         stats.put("endDate", endDate);
         stats.put("totalRevenue", revenue != null ? revenue : 0.0);
         
         return ResponseEntity.ok(stats);
+    }
+    
+    @GetMapping("/statistics/revenue-chart")
+    public ResponseEntity<List<Map<String, Object>>> getRevenueChart(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        
+        List<Map<String, Object>> chartData = statisticsService.getDailyRevenueChart(startDate, endDate);
+        return ResponseEntity.ok(chartData);
     }
     
     @PutMapping("/users/{id}/role")
