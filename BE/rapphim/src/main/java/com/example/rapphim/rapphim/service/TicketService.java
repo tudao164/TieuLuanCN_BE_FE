@@ -34,6 +34,9 @@ public class TicketService {
     @Autowired
     private PromotionRepository promotionRepository;
     
+    @Autowired
+    private MovieRepository movieRepository;
+    
     public List<Ticket> getAllTickets() {
         return ticketRepository.findAll();
     }
@@ -156,6 +159,14 @@ public class TicketService {
             tickets.add(ticketRepository.save(ticket));
         }
         
+        // Tăng totalTicketLove cho phim
+        Movie movie = showtime.getMovie();
+        if (movie.getTotalTicketLove() == null) {
+            movie.setTotalTicketLove(0);
+        }
+        movie.setTotalTicketLove(movie.getTotalTicketLove() + tickets.size());
+        movieRepository.save(movie);
+        
         return tickets;
     }
     
@@ -177,6 +188,28 @@ public class TicketService {
         Seat seat = ticket.getSeat();
         seat.setStatus(Seat.Status.AVAILABLE);
         seatRepository.save(seat);
+        
+        // Giảm totalTicketLove cho phim - lấy lại ticket từ DB để có đầy đủ relations
+        Ticket fullTicket = ticketRepository.findById(ticketId).orElse(null);
+        if (fullTicket != null) {
+            try {
+                // Sử dụng reflection để lấy showtime
+                java.lang.reflect.Field showtimeField = Ticket.class.getDeclaredField("showtime");
+                showtimeField.setAccessible(true);
+                Showtime showtime = (Showtime) showtimeField.get(fullTicket);
+                
+                if (showtime != null) {
+                    Movie movie = showtime.getMovie();
+                    if (movie != null && movie.getTotalTicketLove() != null && movie.getTotalTicketLove() > 0) {
+                        movie.setTotalTicketLove(movie.getTotalTicketLove() - 1);
+                        movieRepository.save(movie);
+                    }
+                }
+            } catch (Exception e) {
+                // Ignore reflection errors
+                System.err.println("Could not update totalTicketLove: " + e.getMessage());
+            }
+        }
     }
     
     public Long getTotalTicketsSoldToday() {
