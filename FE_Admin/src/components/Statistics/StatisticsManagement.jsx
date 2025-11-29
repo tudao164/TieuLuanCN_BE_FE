@@ -30,7 +30,7 @@ const StatisticsManagement = () => {
         startDate: new Date().toISOString().split('T')[0],
         endDate: new Date().toISOString().split('T')[0]
     });
-    const [activeTab, setActiveTab] = useState('overview');
+    const [activeTab, setActiveTab] = useState('revenue');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
@@ -300,16 +300,6 @@ const StatisticsManagement = () => {
                 <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-6 mb-6 border border-white/20">
                     <div className="flex border-b border-white/10 mb-6 overflow-x-auto">
                         <button
-                            onClick={() => setActiveTab('overview')}
-                            className={`px-4 py-2 font-medium transition-all whitespace-nowrap ${activeTab === 'overview'
-                                ? 'text-white border-b-2 border-blue-500'
-                                : 'text-white/60 hover:text-white'
-                                }`}
-                        >
-                            <BarChart3 className="w-4 h-4 inline mr-2" />
-                            Tổng quan
-                        </button>
-                        <button
                             onClick={() => setActiveTab('revenue')}
                             className={`px-4 py-2 font-medium transition-all whitespace-nowrap ${activeTab === 'revenue'
                                 ? 'text-white border-b-2 border-green-500'
@@ -349,117 +339,56 @@ const StatisticsManagement = () => {
                         </div>
                     )}
 
-                    {/* Overview Tab */}
-                    {!loading && activeTab === 'overview' && (
+                    {/* Revenue Tab */}
+                    {!loading && activeTab === 'revenue' && (
                         <div className="space-y-6">
-                            {/* Stats Cards */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                                <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 backdrop-blur-lg rounded-xl p-6 border border-blue-500/30">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-3xl font-bold text-blue-300">{formatNumber(stats.activeTickets)}</div>
-                                            <div className="text-blue-200 text-sm mt-1">Vé đang hoạt động</div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="bg-white/5 backdrop-blur-lg rounded-xl p-6 border border-white/10">
+                                    <h3 className="text-lg font-bold text-white mb-4">Thống Kê Doanh Thu</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-white/70">Doanh thu trong khoảng thời gian:</span>
+                                            <span className="text-green-400 font-bold">
+                                                {statistics.revenue.totalRevenue ? formatCurrency(statistics.revenue.totalRevenue) : '0 ₫'}
+                                            </span>
                                         </div>
-                                        <Ticket className="w-8 h-8 text-blue-400" />
-                                    </div>
-                                    <div className="text-blue-300 text-xs mt-2">
-                                        {statistics.daily.ticketsSoldToday ? `Hôm nay: ${formatNumber(statistics.daily.ticketsSoldToday)}` : 'Đang cập nhật...'}
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-white/70">Từ ngày:</span>
+                                            <span className="text-white">{dateRange.startDate}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-white/70">Đến ngày:</span>
+                                            <span className="text-white">{dateRange.endDate}</span>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="bg-gradient-to-br from-green-500/20 to-green-600/20 backdrop-blur-lg rounded-xl p-6 border border-green-500/30">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-3xl font-bold text-green-300">{formatCurrency(stats.totalRevenue)}</div>
-                                            <div className="text-green-200 text-sm mt-1">Tổng doanh thu</div>
+                                <div className="bg-white/5 backdrop-blur-lg rounded-xl p-6 border border-white/10">
+                                    <h3 className="text-lg font-bold text-white mb-4">Doanh Thu Hôm Nay</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-white/70">Doanh thu:</span>
+                                            <span className="text-green-400 font-bold">
+                                                {statistics.daily.todayRevenue ? formatCurrency(statistics.daily.todayRevenue) : '0 ₫'}
+                                            </span>
                                         </div>
-                                        <DollarSign className="w-8 h-8 text-green-400" />
-                                    </div>
-                                    <div className="text-green-300 text-xs mt-2">
-                                        {statistics.daily.todayRevenue ? `Hôm nay: ${formatCurrency(statistics.daily.todayRevenue)}` : 'Đang cập nhật...'}
-                                    </div>
-                                </div>
-
-                                <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/20 backdrop-blur-lg rounded-xl p-6 border border-purple-500/30">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-3xl font-bold text-purple-300">{formatNumber(stats.customerUsers)}</div>
-                                            <div className="text-purple-200 text-sm mt-1">Khách hàng</div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-white/70">Số vé đã bán:</span>
+                                            <span className="text-blue-400 font-bold">
+                                                {statistics.daily.ticketsSoldToday || 0}
+                                            </span>
                                         </div>
-                                        <Users className="w-8 h-8 text-purple-400" />
-                                    </div>
-                                    <div className="text-purple-300 text-xs mt-2">
-                                        Tổng user: {formatNumber(statistics.allUsers.length)}
-                                    </div>
-                                </div>
-
-                                <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 backdrop-blur-lg rounded-xl p-6 border border-yellow-500/30">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-3xl font-bold text-yellow-300">{formatNumber(stats.totalTickets)}</div>
-                                            <div className="text-yellow-200 text-sm mt-1">Tổng vé</div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-white/70">Giá vé trung bình:</span>
+                                            <span className="text-yellow-400 font-bold">
+                                                {statistics.daily.ticketsSoldToday > 0 ? formatCurrency(statistics.daily.todayRevenue / statistics.daily.ticketsSoldToday) : '0 ₫'}
+                                            </span>
                                         </div>
-                                        <Ticket className="w-8 h-8 text-yellow-400" />
-                                    </div>
-                                    <div className="text-yellow-300 text-xs mt-2">
-                                        Vé active: {formatNumber(stats.activeTickets)}
                                     </div>
                                 </div>
                             </div>
                         </div>
                     )}
-                </div>
-
-                {/* Revenue Tab */}
-                {!loading && activeTab === 'revenue' && (
-                    <div className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="bg-white/5 backdrop-blur-lg rounded-xl p-6 border border-white/10">
-                                <h3 className="text-lg font-bold text-white mb-4">Thống Kê Doanh Thu</h3>
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-white/70">Doanh thu trong khoảng thời gian:</span>
-                                        <span className="text-green-400 font-bold">
-                                            {statistics.revenue.totalRevenue ? formatCurrency(statistics.revenue.totalRevenue) : '0 ₫'}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-white/70">Từ ngày:</span>
-                                        <span className="text-white">{dateRange.startDate}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-white/70">Đến ngày:</span>
-                                        <span className="text-white">{dateRange.endDate}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="bg-white/5 backdrop-blur-lg rounded-xl p-6 border border-white/10">
-                                <h3 className="text-lg font-bold text-white mb-4">Doanh Thu Hôm Nay</h3>
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-white/70">Doanh thu:</span>
-                                        <span className="text-green-400 font-bold">
-                                            {statistics.daily.todayRevenue ? formatCurrency(statistics.daily.todayRevenue) : '0 ₫'}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-white/70">Số vé đã bán:</span>
-                                        <span className="text-blue-400 font-bold">
-                                            {statistics.daily.ticketsSoldToday || 0}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-white/70">Giá vé trung bình:</span>
-                                        <span className="text-yellow-400 font-bold">
-                                            {statistics.daily.ticketsSoldToday > 0 ? formatCurrency(statistics.daily.todayRevenue / statistics.daily.ticketsSoldToday) : '0 ₫'}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 {/* Tickets Tab */}
                 {!loading && activeTab === 'tickets' && (
@@ -567,6 +496,7 @@ const StatisticsManagement = () => {
                         </div>
                     </div>
                 )}
+                </div>
             </div>
         </div>
     );
